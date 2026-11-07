@@ -1,0 +1,784 @@
+generator client {
+  provider               = "prisma-client"
+  output                 = "../src/generated/prisma"
+  moduleFormat           = "esm"
+  generatedFileExtension = "ts"
+  importFileExtension    = "ts"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  CUSTOMER
+  CENTRAL_ADMIN
+  OUTLET_MANAGER
+}
+
+enum OutletType {
+  RESTAURANT
+  CLOUD_KITCHEN
+}
+
+enum FoodType {
+  VEG
+  NON_VEG
+}
+
+enum SpiceLevel {
+  NONE
+  MILD
+  MEDIUM
+  HOT
+  EXTRA_HOT
+}
+
+enum OrderStatus {
+  PLACED
+  ACCEPTED
+  PREPARING
+  READY
+  HANDED_OFF
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+  REFUNDED
+}
+
+enum PaymentMethod {
+  UPI
+  CARD
+  CASH
+  WALLET
+  OTHER
+}
+
+enum FulfillmentType {
+  DELIVERY
+  PICKUP
+}
+
+enum OtpPurpose {
+  LOGIN
+  PHONE_VERIFICATION
+  PASSWORD_RESET
+  MANAGER_ASSIGNMENT
+}
+
+enum CouponDiscountType {
+  FIXED
+  PERCENTAGE
+}
+
+enum LoyaltyTransactionType {
+  EARNED
+  REDEEMED
+  EXPIRED
+  ADJUSTED
+  REVERSAL
+}
+
+enum NotificationChannel {
+  IN_APP
+  SMS
+  WHATSAPP
+  EMAIL
+  PUSH
+}
+
+enum NotificationStatus {
+  PENDING
+  RECORDED
+  SENT
+  FAILED
+  READ
+}
+
+enum CateringStatus {
+  NEW
+  CONTACTED
+  QUOTED
+  CONFIRMED
+  DECLINED
+  COMPLETED
+}
+
+model User {
+  id              String    @id @default(cuid())
+  fullName        String    @map("full_name") @db.VarChar(120)
+  phone           String    @unique @db.VarChar(16)
+  email           String?   @unique @db.VarChar(255)
+  passwordHash    String?   @map("password_hash") @db.VarChar(255)
+  role            UserRole  @default(CUSTOMER)
+  isActive        Boolean   @default(true) @map("is_active")
+  phoneVerifiedAt DateTime? @map("phone_verified_at") @db.Timestamptz(3)
+  emailVerifiedAt DateTime? @map("email_verified_at") @db.Timestamptz(3)
+  avatarUrl       String?   @map("avatar_url") @db.Text
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  addresses           Address[]
+  customerOrders      Order[]              @relation("CustomerOrders")
+  managedOutlet       Outlet?              @relation("OutletManager")
+  otpChallenges       OtpChallenge[]
+  cart                CustomerCart?
+  loyaltyAccount      LoyaltyAccount?
+  loyaltyTransactions LoyaltyTransaction[]
+  inventoryMovements  InventoryMovement[]  @relation("InventoryActor")
+  couponRedemptions   CouponRedemption[]
+  notifications       Notification[]
+  cateringEnquiries   CateringEnquiry[]
+  auditLogs           AuditLog[]           @relation("AuditActor")
+  orderEvents         OrderEvent[]         @relation("OrderEventActor")
+  etaOverrides        EtaOverride[]        @relation("EtaOverrideActor")
+
+  @@index([role, isActive])
+  @@index([createdAt])
+  @@map("users")
+}
+
+model City {
+  id        String   @id @default(cuid())
+  name      String   @unique @db.VarChar(100)
+  state     String?  @db.VarChar(100)
+  country   String   @default("India") @db.VarChar(100)
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  outlets    Outlet[]
+  menuPrices CityMenuPrice[]
+
+  @@map("cities")
+}
+
+model Outlet {
+  id                 String     @id @default(cuid())
+  code               String     @unique @db.VarChar(32)
+  name               String     @db.VarChar(150)
+  type               OutletType
+  cityId             String     @map("city_id")
+  addressLine1       String     @map("address_line_1") @db.VarChar(180)
+  addressLine2       String?    @map("address_line_2") @db.VarChar(180)
+  locality           String     @db.VarChar(120)
+  state              String     @db.VarChar(100)
+  pincode            String     @db.VarChar(10)
+  primaryPincode     String     @map("primary_pincode") @db.VarChar(10)
+  phone              String?    @db.VarChar(16)
+  fssaiLicense       String?    @map("fssai_license") @db.VarChar(80)
+  supportsVeg        Boolean    @default(true) @map("supports_veg")
+  supportsNonVeg     Boolean    @default(true) @map("supports_non_veg")
+  latitude           Decimal?   @db.Decimal(10, 7)
+  longitude          Decimal?   @db.Decimal(10, 7)
+  deliveryRadiusKm   Decimal?   @map("delivery_radius_km") @db.Decimal(7, 2)
+  deliveryPincodes   String[]   @default([]) @map("delivery_pincodes")
+  openingTime        String     @map("opening_time") @db.VarChar(5)
+  closingTime        String     @map("closing_time") @db.VarChar(5)
+  operatingDays      String[]   @default([]) @map("operating_days")
+  minimumPrepMinutes Int        @default(25) @map("minimum_prep_minutes")
+  isActive           Boolean    @default(true) @map("is_active")
+  managerId          String?    @unique @map("manager_id")
+  createdAt          DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  city               City                @relation(fields: [cityId], references: [id], onDelete: Restrict)
+  manager            User?               @relation("OutletManager", fields: [managerId], references: [id], onDelete: SetNull)
+  menuItems          OutletMenuItem[]
+  inventoryMovements InventoryMovement[]
+  orders             Order[]
+  timeMenuOutlets    TimeMenuOutlet[]
+  cateringEnquiries  CateringEnquiry[]
+  carts              CustomerCart[]
+
+  @@index([cityId, isActive])
+  @@index([pincode, isActive])
+  @@index([isActive, type])
+  @@index([deliveryPincodes], type: Gin)
+  @@map("outlets")
+}
+
+model Address {
+  id            String   @id @default(cuid())
+  userId        String   @map("user_id")
+  label         String   @default("Home") @db.VarChar(40)
+  recipientName String   @map("recipient_name") @db.VarChar(120)
+  phone         String   @db.VarChar(16)
+  line1         String   @map("line_1") @db.VarChar(180)
+  line2         String?  @map("line_2") @db.VarChar(180)
+  locality      String   @db.VarChar(120)
+  city          String   @db.VarChar(100)
+  state         String   @db.VarChar(100)
+  pincode       String   @db.VarChar(10)
+  landmark      String?  @db.VarChar(120)
+  latitude      Decimal? @db.Decimal(10, 7)
+  longitude     Decimal? @db.Decimal(10, 7)
+  isDefault     Boolean  @default(false) @map("is_default")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orders Order[]
+
+  @@index([userId, isDefault])
+  @@index([pincode])
+  @@map("addresses")
+}
+
+model FoodItem {
+  id              String     @id @default(cuid())
+  sku             String?    @unique @db.VarChar(48)
+  name            String     @db.VarChar(150)
+  basePrice       Decimal    @map("base_price") @db.Decimal(10, 2)
+  slug            String     @unique @db.VarChar(180)
+  description     String     @db.Text
+  category        String     @db.VarChar(80)
+  foodType        FoodType   @map("food_type")
+  spiceLevel      SpiceLevel @default(MEDIUM) @map("spice_level")
+  allergens       String[]   @default([])
+  prepTimeMinutes Int        @map("prep_time_minutes")
+  imageUrl        String?    @map("image_url") @db.Text
+  isActive        Boolean    @default(true) @map("is_active")
+  createdAt       DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  portions       FoodPortion[]
+  addonGroups    AddonGroup[]
+  cityPrices     CityMenuPrice[]
+  outletMappings OutletMenuItem[]
+  timeMenuItems  TimeMenuItem[]
+  orderItems     OrderItem[]
+  cartItems      CustomerCartItem[]
+
+  @@index([isActive, category])
+  @@index([isActive, foodType])
+  @@index([name])
+  @@map("food_items")
+}
+
+model FoodPortion {
+  id         String  @id @default(cuid())
+  foodItemId String  @map("food_item_id")
+  name       String  @db.VarChar(60)
+  price      Decimal @db.Decimal(10, 2)
+  isActive   Boolean @default(true) @map("is_active")
+
+  foodItem   FoodItem           @relation(fields: [foodItemId], references: [id], onDelete: Cascade)
+  orderItems OrderItem[]
+  cartItems  CustomerCartItem[]
+
+  @@unique([foodItemId, name])
+  @@index([foodItemId, isActive])
+  @@map("food_portions")
+}
+
+model AddonGroup {
+  id         String  @id @default(cuid())
+  foodItemId String  @map("food_item_id")
+  name       String  @db.VarChar(80)
+  isRequired Boolean @default(false) @map("is_required")
+  minSelect  Int     @default(0) @map("min_select")
+  maxSelect  Int     @default(1) @map("max_select")
+  sortOrder  Int     @default(0) @map("sort_order")
+
+  foodItem FoodItem      @relation(fields: [foodItemId], references: [id], onDelete: Cascade)
+  options  AddonOption[]
+
+  @@unique([foodItemId, name])
+  @@index([foodItemId, sortOrder])
+  @@map("addon_groups")
+}
+
+model AddonOption {
+  id           String  @id @default(cuid())
+  addonGroupId String  @map("addon_group_id")
+  name         String  @db.VarChar(100)
+  price        Decimal @default(0) @db.Decimal(10, 2)
+  isActive     Boolean @default(true) @map("is_active")
+  sortOrder    Int     @default(0) @map("sort_order")
+
+  group       AddonGroup          @relation(fields: [addonGroupId], references: [id], onDelete: Cascade)
+  orderAddons OrderItemAddon[]
+  cartAddons  CustomerCartAddon[]
+
+  @@unique([addonGroupId, name])
+  @@index([addonGroupId, isActive, sortOrder])
+  @@map("addon_options")
+}
+
+model CityMenuPrice {
+  id         String   @id @default(cuid())
+  cityId     String   @map("city_id")
+  foodItemId String   @map("food_item_id")
+  price      Decimal  @db.Decimal(10, 2)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  city     City     @relation(fields: [cityId], references: [id], onDelete: Cascade)
+  foodItem FoodItem @relation(fields: [foodItemId], references: [id], onDelete: Cascade)
+
+  @@unique([cityId, foodItemId])
+  @@index([foodItemId])
+  @@map("city_menu_prices")
+}
+
+model OutletMenuItem {
+  id                   String    @id @default(cuid())
+  outletId             String    @map("outlet_id")
+  foodItemId           String    @map("food_item_id")
+  isAvailable          Boolean   @default(true) @map("is_available")
+  stockQuantity        Int       @default(30) @map("stock_quantity")
+  priceOverride        Decimal?  @map("price_override") @db.Decimal(10, 2)
+  timeMenuLabel        String    @default("All Day") @map("time_menu_label") @db.VarChar(80)
+  unavailabilityReason String?   @map("unavailability_reason") @db.VarChar(120)
+  expectedRestockAt    DateTime? @map("expected_restock_at") @db.Timestamptz(3)
+  createdAt            DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  outlet             Outlet              @relation(fields: [outletId], references: [id], onDelete: Cascade)
+  foodItem           FoodItem            @relation(fields: [foodItemId], references: [id], onDelete: Cascade)
+  inventoryMovements InventoryMovement[]
+  orderItems         OrderItem[]
+
+  @@unique([outletId, foodItemId])
+  @@index([outletId, isAvailable])
+  @@index([foodItemId, isAvailable])
+  @@map("outlet_menu_items")
+}
+
+model InventoryMovement {
+  id               String   @id @default(cuid())
+  outletId         String   @map("outlet_id")
+  outletMenuItemId String   @map("outlet_menu_item_id")
+  orderId          String?  @map("order_id")
+  actorId          String?  @map("actor_id")
+  quantityDelta    Int      @map("quantity_delta")
+  reason           String   @db.VarChar(120)
+  idempotencyKey   String?  @unique @map("idempotency_key") @db.VarChar(140)
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  outlet         Outlet         @relation(fields: [outletId], references: [id], onDelete: Restrict)
+  outletMenuItem OutletMenuItem @relation(fields: [outletMenuItemId], references: [id], onDelete: Restrict)
+  order          Order?         @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  actor          User?          @relation("InventoryActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([outletId, createdAt])
+  @@index([outletMenuItemId, createdAt])
+  @@index([orderId])
+  @@map("inventory_movements")
+}
+
+model TimeMenu {
+  id        String   @id @default(cuid())
+  name      String   @db.VarChar(80)
+  startTime String   @map("start_time") @db.VarChar(5)
+  endTime   String   @map("end_time") @db.VarChar(5)
+  days      String[] @default([])
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  outlets TimeMenuOutlet[]
+  items   TimeMenuItem[]
+
+  @@index([isActive])
+  @@map("time_menus")
+}
+
+model TimeMenuOutlet {
+  timeMenuId String @map("time_menu_id")
+  outletId   String @map("outlet_id")
+
+  timeMenu TimeMenu @relation(fields: [timeMenuId], references: [id], onDelete: Cascade)
+  outlet   Outlet   @relation(fields: [outletId], references: [id], onDelete: Cascade)
+
+  @@id([timeMenuId, outletId])
+  @@index([outletId])
+  @@map("time_menu_outlets")
+}
+
+model TimeMenuItem {
+  timeMenuId String @map("time_menu_id")
+  foodItemId String @map("food_item_id")
+
+  timeMenu TimeMenu @relation(fields: [timeMenuId], references: [id], onDelete: Cascade)
+  foodItem FoodItem @relation(fields: [foodItemId], references: [id], onDelete: Cascade)
+
+  @@id([timeMenuId, foodItemId])
+  @@index([foodItemId])
+  @@map("time_menu_items")
+}
+
+model CustomerCart {
+  id        String   @id @default(cuid())
+  userId    String   @unique @map("user_id")
+  outletId  String   @map("outlet_id")
+  couponId  String?  @map("coupon_id")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user   User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  outlet Outlet             @relation(fields: [outletId], references: [id], onDelete: Restrict)
+  coupon Coupon?            @relation(fields: [couponId], references: [id], onDelete: SetNull)
+  items  CustomerCartItem[]
+
+  @@index([outletId])
+  @@map("customer_carts")
+}
+
+model CustomerCartItem {
+  id          String  @id @default(cuid())
+  cartId      String  @map("cart_id")
+  foodItemId  String  @map("food_item_id")
+  portionId   String? @map("portion_id")
+  quantity    Int     @default(1)
+  specialNote String? @map("special_note") @db.VarChar(300)
+
+  cart     CustomerCart        @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  foodItem FoodItem            @relation(fields: [foodItemId], references: [id], onDelete: Restrict)
+  portion  FoodPortion?        @relation(fields: [portionId], references: [id], onDelete: SetNull)
+  addons   CustomerCartAddon[]
+
+  @@index([cartId])
+  @@index([foodItemId])
+  @@map("customer_cart_items")
+}
+
+model CustomerCartAddon {
+  cartItemId    String @map("cart_item_id")
+  addonOptionId String @map("addon_option_id")
+
+  cartItem    CustomerCartItem @relation(fields: [cartItemId], references: [id], onDelete: Cascade)
+  addonOption AddonOption      @relation(fields: [addonOptionId], references: [id], onDelete: Restrict)
+
+  @@id([cartItemId, addonOptionId])
+  @@index([addonOptionId])
+  @@map("customer_cart_addons")
+}
+
+model Order {
+  id                   String          @id @default(cuid())
+  orderNumber          String          @unique @map("order_number") @db.VarChar(32)
+  customerId           String?         @map("customer_id")
+  outletId             String          @map("outlet_id")
+  addressId            String?         @map("address_id")
+  customerName         String          @map("customer_name") @db.VarChar(120)
+  customerPhone        String          @map("customer_phone") @db.VarChar(16)
+  fulfillmentType      FulfillmentType @default(DELIVERY) @map("fulfillment_type")
+  status               OrderStatus     @default(PLACED)
+  paymentStatus        PaymentStatus   @default(PENDING) @map("payment_status")
+  paymentMethod        PaymentMethod?  @map("payment_method")
+  currency             String          @default("INR") @db.VarChar(3)
+  subtotal             Decimal         @db.Decimal(12, 2)
+  couponDiscount       Decimal         @default(0) @map("coupon_discount") @db.Decimal(12, 2)
+  loyaltyDiscount      Decimal         @default(0) @map("loyalty_discount") @db.Decimal(12, 2)
+  taxAmount            Decimal         @default(0) @map("tax_amount") @db.Decimal(12, 2)
+  deliveryFee          Decimal         @default(0) @map("delivery_fee") @db.Decimal(12, 2)
+  gstRate              Decimal         @default(5) @map("gst_rate") @db.Decimal(5, 2)
+  gstInclusive         Boolean         @default(true) @map("gst_inclusive")
+  totalAmount          Decimal         @map("total_amount") @db.Decimal(12, 2)
+  specialInstructions  String?         @map("special_instructions") @db.VarChar(500)
+  placedAt             DateTime        @default(now()) @map("placed_at") @db.Timestamptz(3)
+  promisedAt           DateTime        @map("promised_at") @db.Timestamptz(3)
+  estimatedPrepMinutes Int             @map("estimated_prep_minutes")
+  startedAt            DateTime?       @map("started_at") @db.Timestamptz(3)
+  readyAt              DateTime?       @map("ready_at") @db.Timestamptz(3)
+  handedOffAt          DateTime?       @map("handed_off_at") @db.Timestamptz(3)
+  cancelledAt          DateTime?       @map("cancelled_at") @db.Timestamptz(3)
+  createdAt            DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime        @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  customer            User?                @relation("CustomerOrders", fields: [customerId], references: [id], onDelete: SetNull)
+  outlet              Outlet               @relation(fields: [outletId], references: [id], onDelete: Restrict)
+  address             Address?             @relation(fields: [addressId], references: [id], onDelete: SetNull)
+  items               OrderItem[]
+  payments            PaymentAttempt[]
+  events              OrderEvent[]
+  etaOverrides        EtaOverride[]
+  notifications       Notification[]
+  inventoryMovements  InventoryMovement[]
+  couponRedemption    CouponRedemption?
+  loyaltyTransactions LoyaltyTransaction[]
+
+  @@index([outletId, status, placedAt])
+  @@index([outletId, paymentStatus, placedAt])
+  @@index([customerId, placedAt])
+  @@index([status, promisedAt])
+  @@index([paymentStatus, placedAt])
+  @@map("orders")
+}
+
+model OrderItem {
+  id               String  @id @default(cuid())
+  orderId          String  @map("order_id")
+  foodItemId       String? @map("food_item_id")
+  outletMenuItemId String? @map("outlet_menu_item_id")
+  portionId        String? @map("portion_id")
+  itemName         String  @map("item_name") @db.VarChar(150)
+  portionName      String? @map("portion_name") @db.VarChar(60)
+  quantity         Int
+  unitPrice        Decimal @map("unit_price") @db.Decimal(10, 2)
+  lineTotal        Decimal @map("line_total") @db.Decimal(12, 2)
+  preparationNote  String? @map("preparation_note") @db.VarChar(300)
+
+  order          Order            @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  foodItem       FoodItem?        @relation(fields: [foodItemId], references: [id], onDelete: SetNull)
+  portion        FoodPortion?     @relation(fields: [portionId], references: [id], onDelete: SetNull)
+  outletMenuItem OutletMenuItem?  @relation(fields: [outletMenuItemId], references: [id], onDelete: SetNull)
+  addons         OrderItemAddon[]
+
+  @@index([orderId])
+  @@index([foodItemId])
+  @@index([outletMenuItemId])
+  @@map("order_items")
+}
+
+model OrderItemAddon {
+  id            String  @id @default(cuid())
+  orderItemId   String  @map("order_item_id")
+  addonOptionId String? @map("addon_option_id")
+  addonName     String  @map("addon_name") @db.VarChar(100)
+  unitPrice     Decimal @map("unit_price") @db.Decimal(10, 2)
+  quantity      Int     @default(1)
+
+  orderItem   OrderItem    @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  addonOption AddonOption? @relation(fields: [addonOptionId], references: [id], onDelete: SetNull)
+
+  @@index([orderItemId])
+  @@map("order_item_addons")
+}
+
+model PaymentAttempt {
+  id                String        @id @default(cuid())
+  orderId           String        @map("order_id")
+  method            PaymentMethod
+  status            PaymentStatus @default(PENDING)
+  amount            Decimal       @db.Decimal(12, 2)
+  provider          String?       @db.VarChar(50)
+  providerReference String?       @unique @map("provider_reference") @db.VarChar(150)
+  idempotencyKey    String?       @unique @map("idempotency_key") @db.VarChar(120)
+  failureReason     String?       @map("failure_reason") @db.VarChar(250)
+  paidAt            DateTime?     @map("paid_at") @db.Timestamptz(3)
+  createdAt         DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId, createdAt])
+  @@index([status, createdAt])
+  @@map("payment_attempts")
+}
+
+model OrderEvent {
+  id         String       @id @default(cuid())
+  orderId    String       @map("order_id")
+  actorId    String?      @map("actor_id")
+  fromStatus OrderStatus? @map("from_status")
+  toStatus   OrderStatus? @map("to_status")
+  eventType  String       @map("event_type") @db.VarChar(60)
+  note       String?      @db.VarChar(500)
+  metadata   Json?
+  createdAt  DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  actor User? @relation("OrderEventActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([orderId, createdAt])
+  @@index([actorId, createdAt])
+  @@map("order_events")
+}
+
+model EtaOverride {
+  id                 String   @id @default(cuid())
+  orderId            String   @map("order_id")
+  managerId          String   @map("manager_id")
+  previousMinutes    Int      @map("previous_minutes")
+  newMinutes         Int      @map("new_minutes")
+  previousPromisedAt DateTime @map("previous_promised_at") @db.Timestamptz(3)
+  newPromisedAt      DateTime @map("new_promised_at") @db.Timestamptz(3)
+  reason             String   @db.VarChar(250)
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  order   Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  manager User  @relation("EtaOverrideActor", fields: [managerId], references: [id], onDelete: Restrict)
+
+  @@index([orderId, createdAt])
+  @@index([managerId, createdAt])
+  @@map("eta_overrides")
+}
+
+model Notification {
+  id        String              @id @default(cuid())
+  userId    String?             @map("user_id")
+  orderId   String?             @map("order_id")
+  channel   NotificationChannel @default(IN_APP)
+  status    NotificationStatus  @default(PENDING)
+  eventKey  String?             @unique @map("event_key") @db.VarChar(150)
+  title     String              @db.VarChar(150)
+  body      String              @db.VarChar(500)
+  metadata  Json?
+  readAt    DateTime?           @map("read_at") @db.Timestamptz(3)
+  sentAt    DateTime?           @map("sent_at") @db.Timestamptz(3)
+  createdAt DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user  User?  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  order Order? @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([orderId, createdAt])
+  @@index([status, createdAt])
+  @@map("notifications")
+}
+
+model Coupon {
+  id              String             @id @default(cuid())
+  code            String             @unique @db.VarChar(40)
+  description     String?            @db.VarChar(250)
+  discountType    CouponDiscountType @map("discount_type")
+  discountValue   Decimal            @map("discount_value") @db.Decimal(10, 2)
+  maximumDiscount Decimal?           @map("maximum_discount") @db.Decimal(10, 2)
+  minimumOrder    Decimal            @default(0) @map("minimum_order") @db.Decimal(10, 2)
+  startsAt        DateTime?          @map("starts_at") @db.Timestamptz(3)
+  endsAt          DateTime?          @map("ends_at") @db.Timestamptz(3)
+  totalUsageLimit Int?               @map("total_usage_limit")
+  perUserLimit    Int                @default(1) @map("per_user_limit")
+  firstOrderOnly  Boolean            @default(false) @map("first_order_only")
+  isActive        Boolean            @default(true) @map("is_active")
+  createdAt       DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime           @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  redemptions CouponRedemption[]
+  carts       CustomerCart[]
+
+  @@index([isActive, startsAt, endsAt])
+  @@map("coupons")
+}
+
+model CouponRedemption {
+  id        String   @id @default(cuid())
+  couponId  String   @map("coupon_id")
+  userId    String   @map("user_id")
+  orderId   String   @unique @map("order_id")
+  discount  Decimal  @db.Decimal(12, 2)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  coupon Coupon @relation(fields: [couponId], references: [id], onDelete: Restrict)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Restrict)
+  order  Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([couponId, userId, createdAt])
+  @@index([userId, createdAt])
+  @@map("coupon_redemptions")
+}
+
+model LoyaltyAccount {
+  id             String   @id @default(cuid())
+  userId         String   @unique @map("user_id")
+  pointsBalance  Int      @default(0) @map("points_balance")
+  lifetimeEarned Int      @default(0) @map("lifetime_earned")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user         User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions LoyaltyTransaction[]
+
+  @@map("loyalty_accounts")
+}
+
+model LoyaltyTransaction {
+  id          String                 @id @default(cuid())
+  accountId   String                 @map("account_id")
+  userId      String                 @map("user_id")
+  orderId     String?                @map("order_id")
+  type        LoyaltyTransactionType
+  pointsDelta Int                    @map("points_delta")
+  description String?                @db.VarChar(250)
+  createdAt   DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  account LoyaltyAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  user    User           @relation(fields: [userId], references: [id], onDelete: Restrict)
+  order   Order?         @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  @@index([accountId, createdAt])
+  @@index([userId, createdAt])
+  @@index([orderId])
+  @@map("loyalty_transactions")
+}
+
+model CateringEnquiry {
+  id           String         @id @default(cuid())
+  userId       String?        @map("user_id")
+  outletId     String?        @map("outlet_id")
+  contactName  String         @map("contact_name") @db.VarChar(120)
+  contactPhone String         @map("contact_phone") @db.VarChar(16)
+  contactEmail String?        @map("contact_email") @db.VarChar(255)
+  eventType    String         @map("event_type") @db.VarChar(80)
+  eventDate    DateTime?      @map("event_date") @db.Timestamptz(3)
+  guestCount   Int            @map("guest_count")
+  location     String         @db.VarChar(250)
+  budget       Decimal?       @db.Decimal(12, 2)
+  requirements String?        @db.VarChar(1500)
+  status       CateringStatus @default(NEW)
+  adminNotes   String?        @map("admin_notes") @db.Text
+  createdAt    DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime       @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+  outlet Outlet? @relation(fields: [outletId], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
+  @@index([userId, createdAt])
+  @@index([outletId, eventDate])
+  @@map("catering_enquiries")
+}
+
+model OtpChallenge {
+  id         String     @id @default(cuid())
+  userId     String?    @map("user_id")
+  phone      String     @db.VarChar(16)
+  codeHash   String     @map("code_hash") @db.VarChar(255)
+  purpose    OtpPurpose
+  attempts   Int        @default(0)
+  expiresAt  DateTime   @map("expires_at") @db.Timestamptz(3)
+  consumedAt DateTime?  @map("consumed_at") @db.Timestamptz(3)
+  createdAt  DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([phone, purpose, createdAt])
+  @@index([expiresAt, consumedAt])
+  @@map("otp_challenges")
+}
+
+model AppSetting {
+  id        String   @id @default(cuid())
+  key       String   @unique @db.VarChar(100)
+  value     Json
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  updatedBy String?  @map("updated_by") @db.VarChar(120)
+
+  @@map("app_settings")
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?  @map("actor_id")
+  action     String   @db.VarChar(100)
+  entityType String?  @map("entity_type") @db.VarChar(80)
+  entityId   String?  @map("entity_id") @db.VarChar(100)
+  details    Json?
+  ipAddress  String?  @map("ip_address") @db.VarChar(64)
+  userAgent  String?  @map("user_agent") @db.VarChar(300)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  actor User? @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([actorId, createdAt])
+  @@index([entityType, entityId, createdAt])
+  @@index([action, createdAt])
+  @@map("audit_logs")
+}

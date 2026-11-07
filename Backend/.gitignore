@@ -7,3 +7,10 @@ dist/
 logs/
 *.log
 .DS_Store
+
+# Prisma generated client (regenerate with npm run db:generate)
+src/generated/prisma/
+
+# Local database backups
+*.dump
+*.sql.gz
