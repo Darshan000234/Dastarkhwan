@@ -114,7 +114,7 @@ model User {
   fullName        String    @map("full_name") @db.VarChar(120)
   phone           String    @unique @db.VarChar(16)
   email           String?   @unique @db.VarChar(255)
-  passwordHash    String?   @map("password_hash") @db.VarChar(255)
+  pincode String? @db.VarChar(10)
   role            UserRole  @default(CUSTOMER)
   isActive        Boolean   @default(true) @map("is_active")
   phoneVerifiedAt DateTime? @map("phone_verified_at") @db.Timestamptz(3)
