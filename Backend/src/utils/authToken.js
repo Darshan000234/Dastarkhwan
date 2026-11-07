@@ -1,149 +1,204 @@
 
-import {
-  createHmac,
-  timingSafeEqual,
-} from "node:crypto";
+import jwt from "jsonwebtoken";
+
+/* =========================================
+   JWT CONFIGURATION
+========================================= */
 
 const JWT_ISSUER = "dastarkhwan-api";
 const JWT_AUDIENCE = "dastarkhwan-client";
 
-function getSecret() {
+export const AUTH_COOKIE_NAME =
+  process.env.AUTH_COOKIE_NAME || "dastarkhwan_auth";
+
+function getJwtSecret() {
   const secret = process.env.JWT_SECRET;
 
-  if (!secret || secret.length < 12) {
+  if (
+    typeof secret !== "string" ||
+    Buffer.byteLength(secret, "utf8") < 32
+  ) {
     throw new Error(
-      "JWT_SECRET must be configured and contain at least 12 characters.",
+      "JWT_SECRET must contain at least 32 bytes."
     );
   }
 
   return secret;
 }
 
-function base64UrlEncode(value) {
-  return Buffer.from(value).toString("base64url");
-}
-
-function createSignature(input) {
-  return createHmac("sha256", getSecret())
-    .update(input)
-    .digest("base64url");
-}
-
-function getExpirySeconds() {
+function getJwtExpiresIn() {
   const value = process.env.JWT_EXPIRES_IN || "7d";
 
-  const match = value.match(/^(\d+)([smhd])$/);
-
-  if (!match) {
+  // Only permit explicit units.
+  if (!/^[1-9]\d*(s|m|h|d)$/.test(value)) {
     throw new Error(
-      "JWT_EXPIRES_IN must use a format such as 30m, 12h, or 7d.",
+      "JWT_EXPIRES_IN must use a format such as 30m, 12h, or 7d."
     );
   }
+
+  return value;
+}
+
+function getJwtLifetimeMs() {
+  const value = getJwtExpiresIn();
+  const match = /^([1-9]\d*)(s|m|h|d)$/.exec(value);
 
   const amount = Number(match[1]);
 
   const multipliers = {
-    s: 1,
-    m: 60,
-    h: 3600,
-    d: 86400,
+    s: 1000,
+    m: 60 * 1000,
+    h: 60 * 60 * 1000,
+    d: 24 * 60 * 60 * 1000,
   };
 
-  return amount * multipliers[match[2]];
+  const lifetime = amount * multipliers[match[2]];
+
+  if (!Number.isSafeInteger(lifetime)) {
+    throw new Error("JWT expiration is too large.");
+  }
+
+  return lifetime;
 }
+
+/* =========================================
+   SIGN JWT
+========================================= */
 
 export function signAuthToken(userId) {
-  if (!userId) {
-    throw new Error("A user ID is required to generate an access token.");
+  if (
+    typeof userId !== "string" ||
+    !userId.trim()
+  ) {
+    throw new Error("A valid user ID is required.");
   }
 
-  const now = Math.floor(Date.now() / 1000);
-
-  const header = {
-    alg: "HS256",
-    typ: "JWT",
-  };
-
-  const payload = {
-    sub: userId,
-    iss: JWT_ISSUER,
-    aud: JWT_AUDIENCE,
-    iat: now,
-    exp: now + getExpirySeconds(),
-  };
-
-  const encodedHeader = base64UrlEncode(
-    JSON.stringify(header),
+  return jwt.sign(
+    {},
+    getJwtSecret(),
+    {
+      algorithm: "HS256",
+      subject: userId,
+      issuer: JWT_ISSUER,
+      audience: JWT_AUDIENCE,
+      expiresIn: getJwtExpiresIn(),
+    }
   );
-
-  const encodedPayload = base64UrlEncode(
-    JSON.stringify(payload),
-  );
-
-  const unsignedToken = `${encodedHeader}.${encodedPayload}`;
-
-  return `${unsignedToken}.${createSignature(unsignedToken)}`;
 }
 
+/* =========================================
+   VERIFY JWT
+========================================= */
+
 export function verifyAuthToken(token) {
-  if (typeof token !== "string") {
-    throw new Error("Invalid token.");
+  if (
+    typeof token !== "string" ||
+    !token.trim()
+  ) {
+    throw new Error("Authentication token is missing.");
   }
 
-  const parts = token.split(".");
-
-  if (parts.length !== 3) {
-    throw new Error("Invalid token format.");
-  }
-
-  const [encodedHeader, encodedPayload, signature] = parts;
-
-  const unsignedToken = `${encodedHeader}.${encodedPayload}`;
-
-  const expectedSignature = createSignature(unsignedToken);
-
-  const actualBuffer = Buffer.from(signature);
-  const expectedBuffer = Buffer.from(expectedSignature);
+  const payload = jwt.verify(
+    token,
+    getJwtSecret(),
+    {
+      algorithms: ["HS256"],
+      issuer: JWT_ISSUER,
+      audience: JWT_AUDIENCE,
+    }
+  );
 
   if (
-    actualBuffer.length !== expectedBuffer.length ||
-    !timingSafeEqual(actualBuffer, expectedBuffer)
+    !payload ||
+    typeof payload !== "object" ||
+    typeof payload.sub !== "string" ||
+    !payload.sub.trim()
   ) {
-    throw new Error("Invalid token signature.");
-  }
-
-  let header;
-  let payload;
-
-  try {
-    header = JSON.parse(
-      Buffer.from(encodedHeader, "base64url").toString("utf8"),
-    );
-
-    payload = JSON.parse(
-      Buffer.from(encodedPayload, "base64url").toString("utf8"),
-    );
-  } catch {
-    throw new Error("Invalid token payload.");
-  }
-
-  const now = Math.floor(Date.now() / 1000);
-
-  if (header.alg !== "HS256" || header.typ !== "JWT") {
-    throw new Error("Unsupported token algorithm.");
-  }
-
-  if (payload.iss !== JWT_ISSUER || payload.aud !== JWT_AUDIENCE) {
-    throw new Error("Invalid token issuer or audience.");
-  }
-
-  if (!payload.sub || !Number.isFinite(payload.exp)) {
-    throw new Error("Invalid token claims.");
-  }
-
-  if (payload.exp <= now) {
-    throw new Error("Token has expired.");
+    throw new Error("Invalid authentication token payload.");
   }
 
   return payload;
+}
+
+/* =========================================
+   COOKIE CONFIGURATION
+========================================= */
+
+export function getAuthCookieOptions() {
+  const configuredSameSite = String(
+    process.env.AUTH_COOKIE_SAME_SITE || "lax"
+  ).toLowerCase();
+
+  if (
+    !["lax", "strict", "none"].includes(
+      configuredSameSite
+    )
+  ) {
+    throw new Error(
+      "AUTH_COOKIE_SAME_SITE must be lax, strict, or none."
+    );
+  }
+
+  const secure =
+    process.env.NODE_ENV === "production" ||
+    configuredSameSite === "none";
+
+  const options = {
+    httpOnly: true,
+    secure,
+    sameSite: configuredSameSite,
+    path: process.env.AUTH_COOKIE_PATH || "/api/v1",
+    maxAge: getJwtLifetimeMs(),
+  };
+
+  // Only configure a domain when explicitly required.
+  // Do not set this for localhost.
+  if (process.env.AUTH_COOKIE_DOMAIN) {
+    options.domain = process.env.AUTH_COOKIE_DOMAIN;
+  }
+
+  return options;
+}
+
+/* =========================================
+   SET AUTH COOKIE
+========================================= */
+
+export function setAuthCookie(res, token) {
+  if (typeof token !== "string" || !token) {
+    throw new Error("Cannot set an empty authentication token.");
+  }
+
+  res.cookie(
+    AUTH_COOKIE_NAME,
+    token,
+    getAuthCookieOptions()
+  );
+}
+
+/* =========================================
+   CLEAR AUTH COOKIE
+========================================= */
+
+export function clearAuthCookie(res) {
+  const {
+    httpOnly,
+    secure,
+    sameSite,
+    path,
+    domain,
+  } = getAuthCookieOptions();
+
+  const options = {
+    httpOnly,
+    secure,
+    sameSite,
+    path,
+  };
+
+  if (domain) {
+    options.domain = domain;
+  }
+
+  res.clearCookie(AUTH_COOKIE_NAME, options);
 }

@@ -1,7 +1,9 @@
 
 import prisma from "../db/prisma.js";
-import { verifyAuthToken } from "../utils/authToken.js";
-
+import {
+  AUTH_COOKIE_NAME,
+  verifyAuthToken,
+} from "../utils/authToken.js";
 const ROLE_MAP = {
   CUSTOMER: "customer",
   CENTRAL_ADMIN: "central_admin",
@@ -10,21 +12,12 @@ const ROLE_MAP = {
 
 export async function authenticate(req, res, next) {
   try {
-    const authorization = req.headers.authorization;
-
-    if (!authorization || !authorization.startsWith("Bearer ")) {
-      return res.status(401).json({
-        success: false,
-        message: "Authentication required. Please sign in.",
-      });
-    }
-
-    const token = authorization.slice(7).trim();
+    const token = req.cookies?.[AUTH_COOKIE_NAME];
 
     if (!token) {
       return res.status(401).json({
         success: false,
-        message: "Authentication token is missing.",
+        message: "Authentication required. Please sign in.",
       });
     }
 
