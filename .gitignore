@@ -1,0 +1,55 @@
+# Dependencies
+node_modules/
+
+# Vite / build output
+dist/
+dist-ssr/
+.vite/
+
+# Test and coverage output
+coverage/
+*.lcov
+
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Local tooling caches
+.cache/
+.eslintcache
+.stylelintcache
+
+# Editor / IDE files
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Operating system files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+
+# Optional local reports / artifacts
+playwright-report/
+test-results/
