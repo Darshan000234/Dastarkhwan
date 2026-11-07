@@ -1,0 +1,25 @@
+import { Router } from "express";
+import * as manager from "../controllers/manager.controller.js";
+import {
+  authenticate,
+  authorize,
+  requireAssignedOutlet,
+} from "../middleware/auth.js";
+
+const router = Router();
+router.use(authenticate, authorize("outlet_manager"), requireAssignedOutlet);
+router.get("/workspace", manager.getWorkspace);
+router.get("/overview", manager.getOverview);
+router.get("/kitchen/orders", manager.getKitchenOrders);
+router.get("/kitchen/late-orders", manager.getLateOrders);
+router.get("/orders", manager.getOrders);
+router.get("/orders/:orderId", manager.getOrderDetails);
+router.get("/orders/:orderId/timeline", manager.getOrderTimeline);
+router.patch("/orders/:orderId/status", manager.updateOrderStatus);
+router.patch("/orders/:orderId/eta", manager.overrideOrderEta);
+router.get("/menu-availability", manager.getMenuAvailability);
+router.patch("/menu-availability/:itemId", manager.updateMenuAvailability);
+router.get("/performance", manager.getPerformance);
+router.get("/account", manager.getAccount);
+router.patch("/account", manager.updateAccount);
+export default router;

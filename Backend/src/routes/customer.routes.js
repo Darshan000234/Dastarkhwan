@@ -1,0 +1,46 @@
+import { Router } from "express";
+import * as customer from "../controllers/customer.controller.js";
+import * as checkout from "../controllers/checkout.controller.js";
+import * as orders from "../controllers/customerOrders.controller.js";
+import * as rewards from "../controllers/rewards.controller.js";
+import * as catering from "../controllers/catering.controller.js";
+import { authenticate, authorize } from "../middleware/auth.js";
+
+const router = Router();
+router.get(
+  "/bootstrap",
+  authenticate,
+  authorize("customer"),
+  customer.getBootstrap,
+);
+router.get("/serviceability/:pincode", customer.getServiceability);
+router.get("/menu", customer.getMenu);
+router.get("/menu/categories", customer.getCategories);
+router.get("/menu/popular", customer.getPopularItems);
+router.get("/menu/:itemId", customer.getMenuItem);
+
+router.use(authenticate, authorize("customer"));
+router.get("/profile", customer.getProfile);
+router.patch("/profile", customer.updateProfile);
+router.get("/addresses", customer.listAddresses);
+router.post("/addresses", customer.createAddress);
+router.patch("/addresses/:addressId", customer.updateAddress);
+router.delete("/addresses/:addressId", customer.deleteAddress);
+router.patch("/addresses/:addressId/default", customer.setDefaultAddress);
+router.post("/cart/validate", checkout.validateCart);
+router.post("/cart/quote", checkout.calculateCart);
+router.post("/payments/mock-intent", checkout.createPaymentIntent);
+router.post("/payments/mock-confirm", checkout.confirmMockPayment);
+router.post("/orders", checkout.createOrder);
+router.get("/orders", orders.listMyOrders);
+router.get("/orders/:orderId", orders.getMyOrder);
+router.get("/orders/:orderId/tracking", orders.getOrderTracking);
+router.get("/orders/:orderId/timeline", orders.getOrderTimeline);
+router.post("/orders/:orderId/reorder", orders.reorder);
+router.get("/rewards", rewards.getLoyaltySummary);
+router.get("/rewards/transactions", rewards.getLoyaltyTransactions);
+router.post("/rewards/redeem", rewards.redeemPoints);
+router.post("/catering/enquiries", catering.createCateringEnquiry);
+router.get("/catering/enquiries", catering.listMyCateringEnquiries);
+
+export default router;
