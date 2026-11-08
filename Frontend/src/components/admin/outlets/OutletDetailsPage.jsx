@@ -215,25 +215,6 @@ export default function OutletDetailsPage() {
                 </small>
                 <small>Assigned outlet: {outlet.name}</small>
               </div>
-              <button
-                type="button"
-                className="ad-button ad-button-danger-ghost"
-                onClick={async () => {
-                  if (
-                    !window.confirm(
-                      `Remove ${outlet.manager.name} from ${outlet.name}? Existing orders will remain unchanged.`,
-                    )
-                  )
-                    return;
-                  await mockApi.removeManager(outlet.id);
-                  await refresh();
-                  setNotice(
-                    "Manager assignment removed. Historical orders were not changed.",
-                  );
-                }}
-              >
-                Remove manager
-              </button>
             </div>
           ) : (
             <div className="ad-empty-inline">
