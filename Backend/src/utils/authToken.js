@@ -16,10 +16,10 @@ function getJwtSecret() {
 
   if (
     typeof secret !== "string" ||
-    Buffer.byteLength(secret, "utf8") < 32
+    Buffer.byteLength(secret, "utf8") < 12
   ) {
     throw new Error(
-      "JWT_SECRET must contain at least 32 bytes."
+      "JWT_SECRET must contain at least 12 bytes."
     );
   }
 

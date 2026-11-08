@@ -673,9 +673,14 @@ export const listOrders = asyncHandler(async (req, res) => {
 
   const where = buildOrderWhere(filters);
 
-  const orderBy = {
+  const orderBy = [
+  {
     [filters.sortBy]: filters.sortOrder,
-  };
+  },
+  {
+    id: "desc",
+  },
+];
 
   // Stable ordering when multiple orders share the same
   // selected sort field.

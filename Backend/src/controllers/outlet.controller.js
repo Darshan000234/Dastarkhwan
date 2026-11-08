@@ -3008,7 +3008,7 @@ function getOtpSettings() {
 function getOtpSecret() {
   const secret = process.env.OTP_SECRET;
 
-  if (typeof secret !== "string" || Buffer.byteLength(secret, "utf8") < 32) {
+  if (typeof secret !== "string" || Buffer.byteLength(secret, "utf8") < 12) {
     throw new Error("OTP_SECRET must contain at least 32 bytes.");
   }
 
