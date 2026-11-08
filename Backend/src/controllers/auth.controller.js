@@ -1,9 +1,4 @@
-
-import {
-  createHmac,
-  randomInt,
-  timingSafeEqual,
-} from "node:crypto";
+import { createHmac, randomInt, timingSafeEqual } from "node:crypto";
 
 import prisma from "../db/prisma.js";
 import {
@@ -22,11 +17,7 @@ const ROLE_MAP = Object.freeze({
   OUTLET_MANAGER: "outlet_manager",
 });
 
-const AUTH_INTENTS = new Set([
-  "signup",
-  "login",
-  "staff",
-]);
+const AUTH_INTENTS = new Set(["signup", "login", "staff"]);
 
 const OTP_PURPOSE = "LOGIN";
 
@@ -60,26 +51,17 @@ function createAuthError(message, statusCode, code) {
 }
 
 function isPlainObject(value) {
-  if (
-    value === null ||
-    typeof value !== "object" ||
-    Array.isArray(value)
-  ) {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
     return false;
   }
 
   const prototype = Object.getPrototypeOf(value);
 
-  return (
-    prototype === Object.prototype ||
-    prototype === null
-  );
+  return prototype === Object.prototype || prototype === null;
 }
 
 function hasOnlyKeys(object, allowedKeys) {
-  return Object.keys(object).every((key) =>
-    allowedKeys.includes(key)
-  );
+  return Object.keys(object).every((key) => allowedKeys.includes(key));
 }
 
 function normalizePhone(value) {
@@ -89,16 +71,11 @@ function normalizePhone(value) {
 
   const phone = value.trim();
 
-  return PHONE_REGEX.test(phone)
-    ? phone
-    : null;
+  return PHONE_REGEX.test(phone) ? phone : null;
 }
 
 function getIntent(value) {
-  if (
-    typeof value !== "string" ||
-    !AUTH_INTENTS.has(value)
-  ) {
+  if (typeof value !== "string" || !AUTH_INTENTS.has(value)) {
     return null;
   }
 
@@ -115,12 +92,11 @@ function getOtpConfig() {
 
     const value = Number(raw);
 
-    if (
-      !Number.isSafeInteger(value) ||
-      (allowZero ? value < 0 : value < 1)
-    ) {
+    if (!Number.isSafeInteger(value) || (allowZero ? value < 0 : value < 1)) {
       throw new Error(
-        `${name} must be a valid ${allowZero ? "non-negative" : "positive"} integer.`
+        `${name} must be a valid ${
+          allowZero ? "non-negative" : "positive"
+        } integer.`,
       );
     }
 
@@ -145,19 +121,11 @@ function validateSignupProfile(profile) {
     };
   }
 
-  if (
-    !hasOnlyKeys(profile, [
-      "name",
-      "email",
-      "pincode",
-    ])
-  ) {
+  if (!hasOnlyKeys(profile, ["name", "email", "pincode"])) {
     return {
       error: "Unexpected customer profile fields.",
     };
   }
-
-  // Name
 
   if (typeof profile.name !== "string") {
     return {
@@ -177,8 +145,6 @@ function validateSignupProfile(profile) {
     };
   }
 
-  // Email
-
   let email = null;
 
   if (profile.email !== undefined) {
@@ -196,7 +162,6 @@ function validateSignupProfile(profile) {
       };
     }
 
-    // Empty email is treated as optional.
     if (email === "") {
       email = null;
     } else if (!EMAIL_REGEX.test(email)) {
@@ -205,8 +170,6 @@ function validateSignupProfile(profile) {
       };
     }
   }
-
-  // Pincode
 
   if (typeof profile.pincode !== "string") {
     return {
@@ -231,6 +194,31 @@ function validateSignupProfile(profile) {
   };
 }
 
+const PINCODE_NOT_SERVICEABLE_MESSAGE =
+  "Sorry, we currently don't have an active outlet serving this pincode. Please enter a different pincode.";
+
+async function hasActiveOutletForPincode(pincode, db = prisma) {
+  const outlet = await db.outlet.findFirst({
+    where: {
+      isActive: true,
+      OR: [
+        {
+          primaryPincode: pincode,
+        },
+        {
+          deliveryPincodes: {
+            has: pincode,
+          },
+        },
+      ],
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  return Boolean(outlet);
+}
 /* =========================================================
    REQUEST BODY VALIDATION
 ========================================================= */
@@ -246,7 +234,9 @@ function validateAuthBody(body, mode) {
     !hasOnlyKeys(body, [
       "phone",
       "intent",
-      ...(mode === "signup" ? ["profile"] : []),
+      ...(mode === "signup" || (mode === "verify" && body.intent === "signup")
+        ? ["profile"]
+        : []),
       ...(mode === "verify" ? ["otp"] : []),
     ])
   ) {
@@ -281,9 +271,7 @@ function validateAuthBody(body, mode) {
     }
 
     profile = result.value;
-  } else if (
-    Object.prototype.hasOwnProperty.call(body, "profile")
-  ) {
+  } else if (Object.prototype.hasOwnProperty.call(body, "profile")) {
     return {
       error: "Customer profile is only accepted during signup.",
     };
@@ -292,10 +280,7 @@ function validateAuthBody(body, mode) {
   let otp = null;
 
   if (mode === "verify") {
-    if (
-      typeof body.otp !== "string" ||
-      !OTP_REGEX.test(body.otp)
-    ) {
+    if (typeof body.otp !== "string" || !OTP_REGEX.test(body.otp)) {
       return {
         error: "Enter a valid 6-digit OTP.",
       };
@@ -321,12 +306,9 @@ function validateAuthBody(body, mode) {
 function getOtpSecret() {
   const secret = process.env.OTP_SECRET;
 
-  if (
-    typeof secret !== "string" ||
-    secret.length < 12
-  ) {
+  if (typeof secret !== "string" || secret.length < 12) {
     throw new Error(
-      "OTP_SECRET must be configured with at least 32 characters."
+      "OTP_SECRET must be configured with at least 32 characters.",
     );
   }
 
@@ -334,19 +316,8 @@ function getOtpSecret() {
 }
 
 function generateOtp() {
-  return String(
-    randomInt(0, 1000000)
-  ).padStart(6, "0");
+  return String(randomInt(0, 1000000)).padStart(6, "0");
 }
-
-/*
- * The intent is included in the hash.
- *
- * Therefore:
- * - Signup OTP cannot be used for login.
- * - Customer login OTP cannot be used for staff login.
- * - Staff OTP cannot be used for customer login.
- */
 
 function hashOtp(phone, intent, otp) {
   return createHmac("sha256", getOtpSecret())
@@ -367,10 +338,7 @@ function safeCompare(first, second) {
   const firstBuffer = Buffer.from(first, "hex");
   const secondBuffer = Buffer.from(second, "hex");
 
-  return timingSafeEqual(
-    firstBuffer,
-    secondBuffer
-  );
+  return timingSafeEqual(firstBuffer, secondBuffer);
 }
 
 /* =========================================================
@@ -408,12 +376,7 @@ function validateAccountForIntent(account, intent) {
   }
 
   if (intent === "staff") {
-    if (
-      ![
-        "CENTRAL_ADMIN",
-        "OUTLET_MANAGER",
-      ].includes(account.role)
-    ) {
+    if (!["CENTRAL_ADMIN", "OUTLET_MANAGER"].includes(account.role)) {
       return {
         status: 403,
         message: "This account is not authorised for staff access.",
@@ -422,10 +385,7 @@ function validateAccountForIntent(account, intent) {
     }
 
     if (account.role === "OUTLET_MANAGER") {
-      if (
-        !account.managedOutlet ||
-        !account.managedOutlet.isActive
-      ) {
+      if (!account.managedOutlet || !account.managedOutlet.isActive) {
         return {
           status: 403,
           message: "No active outlet is assigned to this manager.",
@@ -440,15 +400,9 @@ function validateAccountForIntent(account, intent) {
 
 function handleControllerError(error, res, next) {
   if (error.statusCode) {
-    return sendError(
-      res,
-      error.statusCode,
-      error.message,
-      error.code
-    );
+    return sendError(res, error.statusCode, error.message, error.code);
   }
 
-  // Prisma unique constraint violation.
   if (error.code === "P2002") {
     const target = error.meta?.target;
 
@@ -461,7 +415,7 @@ function handleControllerError(error, res, next) {
         res,
         409,
         "An account already uses this email address.",
-        "EMAIL_EXISTS"
+        "EMAIL_EXISTS",
       );
     }
 
@@ -469,17 +423,16 @@ function handleControllerError(error, res, next) {
       res,
       409,
       "An account already exists for this phone number.",
-      "PHONE_EXISTS"
+      "PHONE_EXISTS",
     );
   }
 
-  // PostgreSQL serializable transaction conflict.
   if (error.code === "P2034") {
     return sendError(
       res,
       409,
       "This authentication request conflicted with another request. Please try again.",
-      "TRANSACTION_CONFLICT"
+      "TRANSACTION_CONFLICT",
     );
   }
 
@@ -501,16 +454,8 @@ function formatUser(user, pincode, serviceableOutlets = []) {
     role,
     pincode,
 
-    // Customers are not permanently assigned to an outlet.
-    // Manager outlet assignment comes only from the database.
-    outletId:
-      user.role === "OUTLET_MANAGER"
-        ? user.managedOutlet.id
-        : null,
+    outletId: user.role === "OUTLET_MANAGER" ? user.managedOutlet.id : null,
 
-    // Additive field for customer serviceability.
-    // An empty array means no active outlet currently serves
-    // the customer's effective pincode.
     ...(user.role === "CUSTOMER"
       ? {
           serviceableOutlets,
@@ -520,10 +465,7 @@ function formatUser(user, pincode, serviceableOutlets = []) {
 }
 
 async function getSessionUser(userId) {
-  if (
-    typeof userId !== "string" ||
-    userId.trim() === ""
-  ) {
+  if (typeof userId !== "string" || userId.trim() === "") {
     return null;
   }
 
@@ -566,37 +508,21 @@ async function getSessionUser(userId) {
     },
   });
 
-  if (
-    !user ||
-    !user.isActive ||
-    !ROLE_MAP[user.role]
-  ) {
+  if (!user || !user.isActive || !ROLE_MAP[user.role]) {
     return null;
   }
 
-  // Managers must retain an active assigned outlet.
   if (user.role === "OUTLET_MANAGER") {
-    if (
-      !user.managedOutlet ||
-      !user.managedOutlet.isActive
-    ) {
+    if (!user.managedOutlet || !user.managedOutlet.isActive) {
       return null;
     }
   }
 
-  // The current default address takes precedence over
-  // the pincode stored on the customer account.
-  const pincode =
-    user.addresses[0]?.pincode ||
-    user.pincode ||
-    null;
+  const pincode = user.addresses[0]?.pincode || user.pincode || null;
 
   let serviceableOutlets = [];
 
-  if (
-    user.role === "CUSTOMER" &&
-    pincode
-  ) {
+  if (user.role === "CUSTOMER" && pincode) {
     serviceableOutlets = await prisma.outlet.findMany({
       where: {
         isActive: true,
@@ -625,8 +551,6 @@ async function getSessionUser(userId) {
         },
       },
 
-      // The schema has no outlet-priority or distance model.
-      // Return all matching outlets in deterministic order.
       orderBy: [
         {
           createdAt: "asc",
@@ -645,7 +569,7 @@ async function getSessionUser(userId) {
       id: outlet.id,
       name: outlet.name,
       city: outlet.city.name,
-    }))
+    })),
   );
 }
 
@@ -656,20 +580,12 @@ async function getSessionUser(userId) {
 
 export async function requestOtp(req, res, next) {
   try {
-    const validation = validateAuthBody(
-      req.body,
-      "signup"
-    );
+    const validation = validateAuthBody(req.body, "signup");
 
-    // Signup validation is handled conditionally.
-    // Revalidate the body for login/staff without allowing profile.
     let payload;
 
     if (isPlainObject(req.body) && req.body.intent !== "signup") {
-      const result = validateAuthBody(
-        req.body,
-        "request"
-      );
+      const result = validateAuthBody(req.body, "request");
 
       if (result.error) {
         return sendError(res, 400, result.error);
@@ -684,21 +600,30 @@ export async function requestOtp(req, res, next) {
       payload = validation.value;
     }
 
-    const {
-      phone,
-      intent,
-      profile,
-    } = payload;
+    const { phone, intent, profile } = payload;
 
-    // This project currently has no SMS delivery provider.
-    // Do not create an undelivered production challenge and
-    // pretend the user can authenticate.
+    // Validate serviceability only for customer signup.
+    if (intent === "signup") {
+      const isPincodeServiceable = await hasActiveOutletForPincode(
+        profile.pincode,
+      );
+
+      if (!isPincodeServiceable) {
+        return sendError(
+          res,
+          422,
+          PINCODE_NOT_SERVICEABLE_MESSAGE,
+          "PINCODE_NOT_SERVICEABLE",
+        );
+      }
+    }
+
     if (process.env.NODE_ENV === "production") {
       return sendError(
         res,
         503,
         "OTP delivery is not configured. Authentication is temporarily unavailable.",
-        "OTP_DELIVERY_UNAVAILABLE"
+        "OTP_DELIVERY_UNAVAILABLE",
       );
     }
 
@@ -723,14 +648,13 @@ export async function requestOtp(req, res, next) {
       },
     });
 
-    // Public signup: CUSTOMER only.
     if (intent === "signup") {
       if (existingUser) {
         return sendError(
           res,
           409,
           "An account already exists for this number. Log in instead.",
-          "ACCOUNT_EXISTS"
+          "ACCOUNT_EXISTS",
         );
       }
 
@@ -749,77 +673,51 @@ export async function requestOtp(req, res, next) {
             res,
             409,
             "An account already uses this email address.",
-            "EMAIL_EXISTS"
+            "EMAIL_EXISTS",
           );
         }
       }
     }
 
-    // Existing customer login.
     if (intent === "login") {
-      const accountError = validateAccountForIntent(
-        existingUser,
-        intent
-      );
+      const accountError = validateAccountForIntent(existingUser, intent);
 
       if (accountError) {
         return sendError(
           res,
           accountError.status,
           accountError.message,
-          accountError.code
+          accountError.code,
         );
       }
     }
 
-    // Existing staff login.
     if (intent === "staff") {
-      const accountError = validateAccountForIntent(
-        existingUser,
-        intent
-      );
+      const accountError = validateAccountForIntent(existingUser, intent);
 
       if (accountError) {
         return sendError(
           res,
           accountError.status,
           accountError.message,
-          accountError.code
+          accountError.code,
         );
       }
     }
 
     const otp = generateOtp();
-
     const now = new Date();
 
     const expiresAt = new Date(
-      now.getTime() +
-      otpConfig.expiryMinutes * 60 * 1000
+      now.getTime() + otpConfig.expiryMinutes * 60 * 1000,
     );
 
-    const codeHash = hashOtp(
-      phone,
-      intent,
-      otp
-    );
-
-    /*
-     * OTP_REQUEST_LIMIT applies to all authentication
-     * challenges for this phone using LOGIN purpose.
-     *
-     * Other OTP purposes such as MANAGER_ASSIGNMENT and
-     * PHONE_VERIFICATION are not counted.
-     *
-     * Superseded LOGIN challenges are consumed before
-     * inserting the new challenge.
-     */
+    const codeHash = hashOtp(phone, intent, otp);
 
     await prisma.$transaction(
       async (tx) => {
         const windowStart = new Date(
-          now.getTime() -
-          OTP_REQUEST_WINDOW_MINUTES * 60 * 1000
+          now.getTime() - OTP_REQUEST_WINDOW_MINUTES * 60 * 1000,
         );
 
         const recentRequests = await tx.otpChallenge.count({
@@ -836,49 +734,41 @@ export async function requestOtp(req, res, next) {
           throw createAuthError(
             "Too many OTP requests. Try again later.",
             429,
-            "OTP_RATE_LIMIT"
+            "OTP_RATE_LIMIT",
           );
         }
 
-        const latestChallenge =
-          await tx.otpChallenge.findFirst({
-            where: {
-              phone,
-              purpose: OTP_PURPOSE,
-              consumedAt: null,
-            },
+        const latestChallenge = await tx.otpChallenge.findFirst({
+          where: {
+            phone,
+            purpose: OTP_PURPOSE,
+            consumedAt: null,
+          },
 
-            orderBy: {
-              createdAt: "desc",
-            },
+          orderBy: {
+            createdAt: "desc",
+          },
 
-            select: {
-              createdAt: true,
-            },
-          });
+          select: {
+            createdAt: true,
+          },
+        });
 
         if (latestChallenge) {
           const secondsSinceRequest =
-            (now.getTime() -
-              latestChallenge.createdAt.getTime()) /
-            1000;
+            (now.getTime() - latestChallenge.createdAt.getTime()) / 1000;
 
-          if (
-            secondsSinceRequest <
-            otpConfig.resendSeconds
-          ) {
+          if (secondsSinceRequest < otpConfig.resendSeconds) {
             throw createAuthError(
               `Please wait ${Math.ceil(
-                otpConfig.resendSeconds -
-                secondsSinceRequest
+                otpConfig.resendSeconds - secondsSinceRequest,
               )} seconds before requesting another OTP.`,
               429,
-              "OTP_RESEND_COOLDOWN"
+              "OTP_RESEND_COOLDOWN",
             );
           }
         }
 
-        // Invalidate older outstanding authentication OTPs.
         await tx.otpChallenge.updateMany({
           where: {
             phone,
@@ -904,30 +794,23 @@ export async function requestOtp(req, res, next) {
 
       {
         isolationLevel: "Serializable",
-      }
+      },
     );
 
     const response = {
       success: true,
       message: "OTP generated successfully.",
-      expiresInSeconds:
-        otpConfig.expiryMinutes * 60,
-      resendAfterSeconds:
-        otpConfig.resendSeconds,
+      expiresInSeconds: otpConfig.expiryMinutes * 60,
+      resendAfterSeconds: otpConfig.resendSeconds,
     };
 
-    // Development-only OTP. Never return it in production.
     if (process.env.NODE_ENV === "development") {
       response.devOtp = otp;
     }
 
     return res.status(200).json(response);
   } catch (error) {
-    return handleControllerError(
-      error,
-      res,
-      next
-    );
+    return handleControllerError(error, res, next);
   }
 }
 
@@ -938,36 +821,108 @@ export async function requestOtp(req, res, next) {
 
 export async function verifyOtp(req, res, next) {
   try {
-    const validation = validateAuthBody(
-      req.body,
-      "verify"
-    );
+    const validation = validateAuthBody(req.body, "verify");
 
     if (validation.error) {
-      return sendError(
-        res,
-        400,
-        validation.error
-      );
+      return sendError(res, 400, validation.error);
     }
 
-    const {
-      phone,
-      otp,
-      intent,
-      profile,
-    } = validation.value;
+    const { phone, otp, intent, profile } = validation.value;
 
     const otpConfig = getOtpConfig();
-
     const now = new Date();
 
-    // Find the latest valid, unconsumed authentication OTP.
-    const challenge =
-      await prisma.otpChallenge.findFirst({
+    const challenge = await prisma.otpChallenge.findFirst({
+      where: {
+        phone,
+        purpose: OTP_PURPOSE,
+        consumedAt: null,
+
+        expiresAt: {
+          gt: now,
+        },
+
+        attempts: {
+          lt: otpConfig.maxAttempts,
+        },
+      },
+
+      orderBy: {
+        createdAt: "desc",
+      },
+    });
+
+    if (!challenge) {
+      const latestChallenge = await prisma.otpChallenge.findFirst({
         where: {
           phone,
           purpose: OTP_PURPOSE,
+          consumedAt: null,
+        },
+
+        orderBy: {
+          createdAt: "desc",
+        },
+
+        select: {
+          attempts: true,
+          expiresAt: true,
+        },
+      });
+
+      if (
+        latestChallenge &&
+        latestChallenge.attempts >= otpConfig.maxAttempts
+      ) {
+        return sendError(
+          res,
+          429,
+          "Too many incorrect attempts. Request a new OTP.",
+          "OTP_ATTEMPTS_EXCEEDED",
+        );
+      }
+
+      if (latestChallenge && latestChallenge.expiresAt <= now) {
+        return sendError(
+          res,
+          400,
+          "This OTP has expired. Request a new code.",
+          "OTP_EXPIRED",
+        );
+      }
+
+      return sendError(
+        res,
+        400,
+        "OTP not found or already used. Request a new code.",
+        "OTP_NOT_FOUND",
+      );
+    }
+
+    if (intent === "signup" && challenge.userId !== null) {
+      return sendError(
+        res,
+        400,
+        "Invalid signup OTP challenge.",
+        "INVALID_OTP_CHALLENGE",
+      );
+    }
+
+    if (intent !== "signup" && !challenge.userId) {
+      return sendError(
+        res,
+        400,
+        "Invalid login OTP challenge.",
+        "INVALID_OTP_CHALLENGE",
+      );
+    }
+
+    const suppliedHash = hashOtp(phone, intent, otp);
+
+    if (!safeCompare(challenge.codeHash, suppliedHash)) {
+      const attemptUpdate = await prisma.otpChallenge.updateMany({
+        where: {
+          id: challenge.id,
           consumedAt: null,
 
           expiresAt: {
@@ -979,153 +934,36 @@ export async function verifyOtp(req, res, next) {
           },
         },
 
-        orderBy: {
-          createdAt: "desc",
+        data: {
+          attempts: {
+            increment: 1,
+          },
         },
       });
-
-    if (!challenge) {
-      const latestChallenge =
-        await prisma.otpChallenge.findFirst({
-          where: {
-            phone,
-            purpose: OTP_PURPOSE,
-            consumedAt: null,
-          },
-
-          orderBy: {
-            createdAt: "desc",
-          },
-
-          select: {
-            attempts: true,
-            expiresAt: true,
-          },
-        });
-
-      if (
-        latestChallenge &&
-        latestChallenge.attempts >= otpConfig.maxAttempts
-      ) {
-        return sendError(
-          res,
-          429,
-          "Too many incorrect attempts. Request a new OTP.",
-          "OTP_ATTEMPTS_EXCEEDED"
-        );
-      }
-
-      if (
-        latestChallenge &&
-        latestChallenge.expiresAt <= now
-      ) {
-        return sendError(
-          res,
-          400,
-          "This OTP has expired. Request a new code.",
-          "OTP_EXPIRED"
-        );
-      }
-
-      return sendError(
-        res,
-        400,
-        "OTP not found or already used. Request a new code.",
-        "OTP_NOT_FOUND"
-      );
-    }
-
-    // Ensure challenge purpose and account association
-    // agree with the requested authentication flow.
-    if (
-      intent === "signup" &&
-      challenge.userId !== null
-    ) {
-      return sendError(
-        res,
-        400,
-        "Invalid signup OTP challenge.",
-        "INVALID_OTP_CHALLENGE"
-      );
-    }
-
-    if (
-      intent !== "signup" &&
-      !challenge.userId
-    ) {
-      return sendError(
-        res,
-        400,
-        "Invalid login OTP challenge.",
-        "INVALID_OTP_CHALLENGE"
-      );
-    }
-
-    const suppliedHash = hashOtp(
-      phone,
-      intent,
-      otp
-    );
-
-    if (
-      !safeCompare(
-        challenge.codeHash,
-        suppliedHash
-      )
-    ) {
-      /*
-       * Increment attempts atomically.
-       *
-       * The WHERE condition prevents concurrent requests
-       * from incrementing an already exhausted challenge.
-       */
-
-      const attemptUpdate =
-        await prisma.otpChallenge.updateMany({
-          where: {
-            id: challenge.id,
-            consumedAt: null,
-
-            expiresAt: {
-              gt: now,
-            },
-
-            attempts: {
-              lt: otpConfig.maxAttempts,
-            },
-          },
-
-          data: {
-            attempts: {
-              increment: 1,
-            },
-          },
-        });
 
       if (attemptUpdate.count !== 1) {
         return sendError(
           res,
           429,
           "This OTP is expired, exhausted, or already used.",
-          "OTP_NO_LONGER_VALID"
+          "OTP_NO_LONGER_VALID",
         );
       }
 
-      const updatedChallenge =
-        await prisma.otpChallenge.findUnique({
-          where: {
-            id: challenge.id,
-          },
+      const updatedChallenge = await prisma.otpChallenge.findUnique({
+        where: {
+          id: challenge.id,
+        },
 
-          select: {
-            attempts: true,
-          },
-        });
+        select: {
+          attempts: true,
+        },
+      });
 
       const remaining = Math.max(
         0,
         otpConfig.maxAttempts -
-        (updatedChallenge?.attempts || otpConfig.maxAttempts)
+          (updatedChallenge?.attempts || otpConfig.maxAttempts),
       );
 
       return sendError(
@@ -1136,54 +974,40 @@ export async function verifyOtp(req, res, next) {
           ? `Incorrect OTP. ${remaining} attempts remaining.`
           : "Too many incorrect attempts. Request a new OTP.",
 
-        remaining > 0
-          ? "BAD_OTP"
-          : "OTP_ATTEMPTS_EXCEEDED"
+        remaining > 0 ? "BAD_OTP" : "OTP_ATTEMPTS_EXCEEDED",
       );
     }
 
-    /*
-     * Transaction guarantees:
-     *
-     * 1. Challenge is consumed exactly once.
-     * 2. Signup cannot create duplicate phone accounts.
-     * 3. Email uniqueness is checked again.
-     * 4. Role is always selected by the database.
-     * 5. Staff assignment is checked inside the transaction.
-     * 6. Failed account creation rolls back OTP consumption.
-     */
-
     const userId = await prisma.$transaction(
       async (tx) => {
-        const consumed =
-          await tx.otpChallenge.updateMany({
-            where: {
-              id: challenge.id,
-              phone,
-              purpose: OTP_PURPOSE,
-              codeHash: challenge.codeHash,
-              userId: challenge.userId,
-              consumedAt: null,
+        const consumed = await tx.otpChallenge.updateMany({
+          where: {
+            id: challenge.id,
+            phone,
+            purpose: OTP_PURPOSE,
+            codeHash: challenge.codeHash,
+            userId: challenge.userId,
+            consumedAt: null,
 
-              expiresAt: {
-                gt: new Date(),
-              },
-
-              attempts: {
-                lt: otpConfig.maxAttempts,
-              },
+            expiresAt: {
+              gt: new Date(),
             },
 
-            data: {
-              consumedAt: new Date(),
+            attempts: {
+              lt: otpConfig.maxAttempts,
             },
-          });
+          },
+
+          data: {
+            consumedAt: new Date(),
+          },
+        });
 
         if (consumed.count !== 1) {
           throw createAuthError(
             "This OTP has already been used or has expired.",
             400,
-            "OTP_ALREADY_USED"
+            "OTP_ALREADY_USED",
           );
         }
 
@@ -1209,36 +1033,47 @@ export async function verifyOtp(req, res, next) {
           },
         });
 
-        // CUSTOMER SIGNUP
         if (intent === "signup") {
           if (account) {
             throw createAuthError(
               "An account already exists for this number. Log in instead.",
               409,
-              "ACCOUNT_EXISTS"
+              "ACCOUNT_EXISTS",
             );
           }
 
-          // Validate email uniqueness again inside transaction.
           if (profile.email) {
-            const existingEmail =
-              await tx.user.findUnique({
-                where: {
-                  email: profile.email,
-                },
+            const existingEmail = await tx.user.findUnique({
+              where: {
+                email: profile.email,
+              },
 
-                select: {
-                  id: true,
-                },
-              });
+              select: {
+                id: true,
+              },
+            });
 
             if (existingEmail) {
               throw createAuthError(
                 "An account already uses this email address.",
                 409,
-                "EMAIL_EXISTS"
+                "EMAIL_EXISTS",
               );
             }
+          }
+
+          // Recheck serviceability before creating the customer.
+          const isPincodeServiceable = await hasActiveOutletForPincode(
+            profile.pincode,
+            tx,
+          );
+
+          if (!isPincodeServiceable) {
+            throw createAuthError(
+              PINCODE_NOT_SERVICEABLE_MESSAGE,
+              422,
+              "PINCODE_NOT_SERVICEABLE",
+            );
           }
 
           const customer = await tx.user.create({
@@ -1247,9 +1082,6 @@ export async function verifyOtp(req, res, next) {
               phone,
               email: profile.email,
               pincode: profile.pincode,
-
-              // Never accept role or administrative
-              // fields from public signup.
               role: "CUSTOMER",
               isActive: true,
               phoneVerifiedAt: new Date(),
@@ -1263,32 +1095,24 @@ export async function verifyOtp(req, res, next) {
           return customer.id;
         }
 
-        // EXISTING CUSTOMER / STAFF LOGIN
-
-        const accountError =
-          validateAccountForIntent(
-            account,
-            intent
-          );
+        const accountError = validateAccountForIntent(account, intent);
 
         if (accountError) {
           throw createAuthError(
             accountError.message,
             accountError.status,
-            accountError.code
+            accountError.code,
           );
         }
 
-        // The challenge must still belong to this exact account.
         if (challenge.userId !== account.id) {
           throw createAuthError(
             "OTP does not belong to the current account.",
             400,
-            "OTP_ACCOUNT_MISMATCH"
+            "OTP_ACCOUNT_MISMATCH",
           );
         }
 
-        // Mark the phone as verified after successful OTP.
         await tx.user.update({
           where: {
             id: account.id,
@@ -1308,11 +1132,9 @@ export async function verifyOtp(req, res, next) {
 
       {
         isolationLevel: "Serializable",
-      }
+      },
     );
 
-    // Fetch the current session from PostgreSQL.
-    // Never construct session permissions from request data.
     const sessionUser = await getSessionUser(userId);
 
     if (!sessionUser) {
@@ -1320,29 +1142,21 @@ export async function verifyOtp(req, res, next) {
         res,
         403,
         "Your account or outlet assignment is no longer active.",
-        "SESSION_NOT_AVAILABLE"
+        "SESSION_NOT_AVAILABLE",
       );
     }
 
-    // Exactly ONE JWT is issued.
     const token = signAuthToken(userId);
 
     setAuthCookie(res, token);
 
-    return res
-      .status(200)
-      .set("Cache-Control", "no-store")
-      .json({
-        success: true,
-        message: "Authentication successful.",
-        user: sessionUser,
-      });
+    return res.status(200).set("Cache-Control", "no-store").json({
+      success: true,
+      message: "Authentication successful.",
+      user: sessionUser,
+    });
   } catch (error) {
-    return handleControllerError(
-      error,
-      res,
-      next
-    );
+    return handleControllerError(error, res, next);
   }
 }
 
@@ -1353,34 +1167,26 @@ export async function verifyOtp(req, res, next) {
 
 export async function getCurrentSession(req, res, next) {
   try {
-    // Identity must come only from authenticated middleware.
     if (
       !req.user ||
       typeof req.user.id !== "string" ||
       req.user.id.trim() === ""
     ) {
-      return sendError(
-        res,
-        401,
-        "Authentication required.",
-        "INVALID_SESSION"
-      );
+      return sendError(res, 401, "Authentication required.", "INVALID_SESSION");
     }
 
-    const user = await getSessionUser(
-      req.user.id
-    );
+    const user = await getSessionUser(req.user.id);
 
     if (!user) {
       return sendError(
         res,
         401,
         "Your account is inactive, deleted, or no longer authorised.",
-        "SESSION_UNAVAILABLE"
+        "SESSION_UNAVAILABLE",
       );
     }
 
-    return res.status(200).json({
+    return res.status(200).set("Cache-Control", "no-store").json({
       success: true,
       user,
     });
@@ -1395,10 +1201,10 @@ export async function getCurrentSession(req, res, next) {
 ========================================================= */
 
 export async function logout(req, res) {
- clearAuthCookie(res);
+  clearAuthCookie(res);
 
   return res.status(200).json({
     success: true,
-    message: "Logged out successfully. Remove the current Bearer token from the client.",
+    message: "Logged out successfully.",
   });
 }

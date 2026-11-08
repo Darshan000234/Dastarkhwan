@@ -9,167 +9,44 @@ import {
   ShieldCheck,
 } from "lucide-react";
 
-const BRAND = { name: "Dastarkhwan", descriptor: "Hyderabadi kitchen" };
-const ROUTES = { home: "/", terms: "/terms", privacy: "/privacy" };
+import { useAuth } from "../context/AuthContext.jsx";
+
+const BRAND = {
+  name: "Dastarkhwan",
+  descriptor: "Hyderabadi kitchen",
+};
+
+const ROUTES = {
+  home: "/",
+  terms: "/terms",
+  privacy: "/privacy",
+};
+
 const ROLE_HOME = {
-  customer: "/order",
+  customer: "/customer",
   central_admin: "/admin",
   outlet_manager: "/manager",
 };
+
 const ROLE_LABEL = {
   customer: "Customer account",
   central_admin: "Central Admin",
   outlet_manager: "Outlet Manager",
 };
+
 const MODES = ["login", "signup", "staff"];
 const OTP_LENGTH = 6;
-const RESEND_SECONDS = 30;
-const MAX_OTP_ATTEMPTS = 5;
+
 const PHONE_RE = /^[6-9]\d{9}$/;
 const PINCODE_RE = /^[1-9]\d{5}$/;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
-const DEMO_ENABLED =
-  import.meta.env.DEV || import.meta.env.VITE_ENABLE_DEMO_AUTH === "true";
-const DEMO_OTP = /^\d{6}$/.test(import.meta.env.VITE_DEMO_OTP || "")
-  ? import.meta.env.VITE_DEMO_OTP
-  : "123456";
+
+// These are only development phone-number prefill shortcuts.
+// Authentication always goes through the real backend.
+const DEMO_ENABLED = import.meta.env.DEV;
 
 const HERO_IMAGE =
   "https://images.unsplash.com/photo-1589302168068-964664d93dc0?auto=format&fit=crop&w=1500&q=85";
-
-class AuthError extends Error {
-  constructor(message, code) {
-    super(message);
-    this.code = code;
-  }
-}
-
-const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-const demoAccounts = new Map([
-  ["9000000001", { role: "central_admin", name: "Demo Admin" }],
-  ["9000000003", { role: "customer", name: "Demo Customer" }],
-]);
-let activeChallenge = null;
-
-function getAssignedDemoManager(phone) {
-  if (!DEMO_ENABLED) return null;
-  try {
-    const saved = localStorage.getItem("dastarkhwan_central_admin_demo_v1");
-    if (!saved) return null;
-    const state = JSON.parse(saved);
-    const outlet = state?.outlets?.find(
-      (entry) =>
-        entry.manager?.phone === phone &&
-        entry.manager?.verified === true &&
-        entry.manager?.active !== false,
-    );
-    if (!outlet) return null;
-    return {
-      role: "outlet_manager",
-      name: outlet.manager.name,
-      outletId: outlet.id,
-    };
-  } catch {
-    return null;
-  }
-}
-
-function getDemoAccount(phone) {
-  return demoAccounts.get(phone) || getAssignedDemoManager(phone);
-}
-
-// Replace these methods with real backend requests before production.
-const authApi = {
-  async requestOtp({ phone, intent }) {
-    await wait(650);
-    if (!DEMO_ENABLED) {
-      throw new AuthError(
-        "Authentication is not connected yet. Please try again later.",
-        "NOT_CONNECTED",
-      );
-    }
-    const account = getDemoAccount(phone);
-    if (intent === "signup" && account) {
-      throw new AuthError(
-        "An account already exists for this number. Log in instead.",
-        "ACCOUNT_EXISTS",
-      );
-    }
-    if (intent === "login" && !account) {
-      throw new AuthError(
-        "No account found for this number. Create an account first.",
-        "NO_ACCOUNT",
-      );
-    }
-    if (intent === "staff" && (!account || account.role === "customer")) {
-      throw new AuthError(
-        "This number is not authorised for staff access.",
-        "NOT_STAFF",
-      );
-    }
-    activeChallenge = { phone, intent, attempts: 0 };
-  },
-
-  async verifyOtp({ phone, otp, intent, profile }) {
-    await wait(650);
-    if (!DEMO_ENABLED) {
-      throw new AuthError(
-        "Authentication is not connected yet. Please try again later.",
-        "NOT_CONNECTED",
-      );
-    }
-    if (
-      !activeChallenge ||
-      activeChallenge.phone !== phone ||
-      activeChallenge.intent !== intent
-    ) {
-      throw new AuthError(
-        "This code has expired. Request a new one.",
-        "EXPIRED",
-      );
-    }
-    if (activeChallenge.attempts >= MAX_OTP_ATTEMPTS) {
-      throw new AuthError(
-        "Too many incorrect attempts. Request a new code.",
-        "TOO_MANY_ATTEMPTS",
-      );
-    }
-    if (otp !== DEMO_OTP) {
-      activeChallenge.attempts += 1;
-      const remaining = MAX_OTP_ATTEMPTS - activeChallenge.attempts;
-      throw new AuthError(
-        remaining > 0
-          ? `Incorrect code. ${remaining} ${remaining === 1 ? "attempt" : "attempts"} left.`
-          : "Too many incorrect attempts. Request a new code.",
-        remaining > 0 ? "BAD_OTP" : "TOO_MANY_ATTEMPTS",
-      );
-    }
-    activeChallenge = null;
-    if (intent === "signup") {
-      demoAccounts.set(phone, {
-        role: "customer",
-        name: profile.name,
-        email: profile.email || null,
-        pincode: profile.pincode,
-      });
-    }
-    const account = getDemoAccount(phone);
-    if (!account)
-      throw new AuthError(
-        "Account could not be found. Start again.",
-        "NO_ACCOUNT",
-      );
-    return {
-      user: {
-        phone,
-        name: account.name,
-        role: account.role,
-        pincode: account.pincode || null,
-        outletId: account.outletId || null,
-      },
-    };
-  },
-};
 
 function BrandMark({ className = "" }) {
   return (
@@ -202,6 +79,7 @@ function Logo({ light = false }) {
 
 function Banner({ children, tone = "error" }) {
   const success = tone === "success";
+
   return (
     <div
       className={`sl-banner ${success ? "sl-banner-success" : ""}`}
@@ -217,7 +95,9 @@ function Field({ id, label, error, hint, children }) {
   return (
     <div className="sl-field">
       <label htmlFor={id}>{label}</label>
+
       {children}
+
       {error ? (
         <p
           id={id ? `${id}-error` : undefined}
@@ -242,17 +122,20 @@ function OtpInput({ digits, onChange, disabled, hasError }) {
     refs.current[0]?.focus();
   }, []);
 
-  const focusAt = (index) =>
+  const focusAt = (index) => {
     refs.current[Math.max(0, Math.min(OTP_LENGTH - 1, index))]?.focus();
+  };
 
   const handleChange = (index, event) => {
     const chars = event.target.value.replace(/\D/g, "");
     const next = [...digits];
+
     if (!chars) {
       next[index] = "";
       onChange(next);
       return;
     }
+
     if (chars.length > 1) {
       chars
         .slice(0, OTP_LENGTH)
@@ -260,20 +143,27 @@ function OtpInput({ digits, onChange, disabled, hasError }) {
         .forEach((char, position) => {
           next[position] = char;
         });
+
       onChange(next);
       focusAt(Math.min(chars.length, OTP_LENGTH) - 1);
       return;
     }
+
     next[index] = chars;
     onChange(next);
-    if (index < OTP_LENGTH - 1) focusAt(index + 1);
+
+    if (index < OTP_LENGTH - 1) {
+      focusAt(index + 1);
+    }
   };
 
   const handleKeyDown = (index, event) => {
     if (event.key === "Backspace" && !digits[index] && index > 0) {
       event.preventDefault();
+
       const next = [...digits];
       next[index - 1] = "";
+
       onChange(next);
       focusAt(index - 1);
     } else if (event.key === "ArrowLeft") {
@@ -290,12 +180,17 @@ function OtpInput({ digits, onChange, disabled, hasError }) {
       .getData("text")
       .replace(/\D/g, "")
       .slice(0, OTP_LENGTH);
+
     if (!pasted) return;
+
     event.preventDefault();
+
     const next = Array(OTP_LENGTH).fill("");
+
     pasted.split("").forEach((char, index) => {
       next[index] = char;
     });
+
     onChange(next);
     focusAt(Math.min(pasted.length, OTP_LENGTH) - 1);
   };
@@ -350,32 +245,59 @@ export default function SignupLogin({
 }) {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+
+  const { user: authenticatedUser, requestOtp, login } = useAuth();
+
   const requestedMode = searchParams.get("mode");
+
   const mode = MODES.includes(requestedMode) ? requestedMode : initialMode;
+
   const copy = COPY[mode];
 
   const [step, setStep] = useState("details");
   const [status, setStatus] = useState("idle");
+
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [pincode, setPincode] = useState("");
   const [email, setEmail] = useState("");
+
   const [accepted, setAccepted] = useState(false);
+
   const [errors, setErrors] = useState({});
   const [formError, setFormError] = useState("");
+
   const [otpDigits, setOtpDigits] = useState(Array(OTP_LENGTH).fill(""));
+
   const [otpError, setOtpError] = useState("");
   const [resendIn, setResendIn] = useState(0);
-  const [user, setUser] = useState(null);
+
+  // This value comes only from the backend response.
+  // It is never generated or hardcoded in the frontend.
+  const [devOtp, setDevOtp] = useState(null);
+
   const [showDemo, setShowDemo] = useState(false);
 
   const phoneRef = useRef(null);
   const nameRef = useRef(null);
+
   const busy = status !== "idle";
   const otp = otpDigits.join("");
+
   const showTabs = step === "details" && mode !== "staff";
 
   useEffect(() => {
+    if (resendIn <= 0) return undefined;
+
+    const timer = window.setTimeout(
+      () => setResendIn((value) => value - 1),
+      1000,
+    );
+
+    return () => window.clearTimeout(timer);
+  }, [resendIn]);
+
+  const setMode = (nextMode) => {
     setStep("details");
     setStatus("idle");
     setErrors({});
@@ -383,77 +305,109 @@ export default function SignupLogin({
     setOtpDigits(Array(OTP_LENGTH).fill(""));
     setOtpError("");
     setResendIn(0);
-  }, [mode]);
+    setDevOtp(null);
 
-  useEffect(() => {
-    if (resendIn <= 0) return undefined;
-    const timer = window.setTimeout(
-      () => setResendIn((value) => value - 1),
-      1000,
-    );
-    return () => window.clearTimeout(timer);
-  }, [resendIn]);
-
-  useEffect(() => {
-    if (step !== "success") return undefined;
-    const timer = window.setTimeout(() => finish(), 2200);
-    return () => window.clearTimeout(timer);
-    // finish is stable for the current authenticated user.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step, user]);
-
-  const setMode = (nextMode) => {
     setSearchParams({ mode: nextMode }, { replace: true });
   };
+  const getSignupProfile = () => ({
+    name: name.trim(),
+    email: email.trim(),
+    pincode: pincode.trim(),
+  });
 
   const finish = () => {
-    if (!user) return;
-    try {
-      // Demo-only convenience. This is not proof of identity or authorization.
-      sessionStorage.setItem("demo_auth_session", JSON.stringify(user));
-    } catch {
-      // Continue if browser storage is unavailable.
-    }
+    if (!authenticatedUser) return;
+
     if (onAuthenticated) {
-      onAuthenticated(user);
-    } else {
-      const destination = ROLE_HOME[user.role] || ROLE_HOME.customer;
-      const target =
-        user.role === "customer" && user.pincode
-          ? `${destination}?pincode=${encodeURIComponent(user.pincode)}`
-          : destination;
-      navigate(target, { replace: true });
+      onAuthenticated(authenticatedUser);
+      return;
     }
+
+    const destination = ROLE_HOME[authenticatedUser.role] || "/auth";
+
+    const target =
+      authenticatedUser.role === "customer" && authenticatedUser.pincode
+        ? `${destination}?pincode=${encodeURIComponent(
+            authenticatedUser.pincode,
+          )}`
+        : destination;
+
+    navigate(target, { replace: true });
   };
+
+  useEffect(() => {
+    if (step !== "success" || !authenticatedUser) {
+      return undefined;
+    }
+
+    const timer = window.setTimeout(() => {
+      finish();
+    }, 2200);
+
+    return () => window.clearTimeout(timer);
+
+    // finish uses the current authenticated user and navigation.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, authenticatedUser]);
 
   const validate = () => {
     const next = {};
+
     if (mode === "signup") {
-      if (name.trim().length < 2) next.name = "Enter your full name.";
-      else if (name.trim().length > 60)
+      if (name.trim().length < 2) {
+        next.name = "Enter your full name.";
+      } else if (name.trim().length > 60) {
         next.name = "Name must be 60 characters or fewer.";
-      if (!PINCODE_RE.test(pincode))
+      }
+
+      if (!PINCODE_RE.test(pincode)) {
         next.pincode = "Enter a valid 6-digit Indian delivery pincode.";
-      if (email.trim() && !EMAIL_RE.test(email.trim()))
+      }
+
+      if (email.trim() && !EMAIL_RE.test(email.trim())) {
         next.email = "Enter a valid email address or leave it blank.";
-      if (!accepted)
+      }
+
+      if (!accepted) {
         next.terms =
           "Accept the Terms and Privacy Policy to create an account.";
+      }
     }
-    if (!PHONE_RE.test(phone))
+
+    if (!PHONE_RE.test(phone)) {
       next.phone = "Enter a valid 10-digit Indian mobile number.";
+    }
+
     return next;
   };
 
   const sendOtp = async (isResend = false) => {
     setStatus("sending");
     setFormError("");
+
     try {
-      await authApi.requestOtp({ phone, intent: mode });
+      const payload = {
+        phone: phone.trim(),
+        intent: mode,
+        ...(mode === "signup" ? { profile: getSignupProfile() } : {}),
+      };
+
+      const response = await requestOtp(payload);
+
       setOtpDigits(Array(OTP_LENGTH).fill(""));
       setOtpError("");
-      setResendIn(RESEND_SECONDS);
-      if (!isResend) setStep("otp");
+
+      const resendSeconds = Number(response?.resendAfterSeconds ?? 0);
+
+      setResendIn(
+        Number.isFinite(resendSeconds) ? Math.max(0, resendSeconds) : 0,
+      );
+
+      setDevOtp(typeof response?.devOtp === "string" ? response.devOtp : null);
+
+      if (!isResend) {
+        setStep("otp");
+      }
     } catch (error) {
       setFormError(
         error instanceof Error
@@ -467,46 +421,73 @@ export default function SignupLogin({
 
   const handleDetailsSubmit = (event) => {
     event.preventDefault();
+
     if (busy) return;
+
     const found = validate();
+
     setErrors(found);
+
     if (Object.keys(found).length) {
-      if (found.name) nameRef.current?.focus();
-      else if (found.phone) phoneRef.current?.focus();
+      if (found.name) {
+        nameRef.current?.focus();
+      } else if (found.phone) {
+        phoneRef.current?.focus();
+      }
+
       return;
     }
+
     sendOtp();
   };
 
   const handleVerify = async (event) => {
     event.preventDefault();
+
     if (busy) return;
+
     if (otp.length !== OTP_LENGTH) {
       setOtpError(`Enter the ${OTP_LENGTH}-digit code.`);
       return;
     }
+
     setStatus("verifying");
     setOtpError("");
     setFormError("");
+
     try {
-      const result = await authApi.verifyOtp({
-        phone,
+      const payload = {
+        phone: phone.trim(),
         otp,
         intent: mode,
-        profile: { name: name.trim(), email: email.trim(), pincode },
-      });
-      setUser(result.user);
+
+        // The current backend signup controller also needs
+        // this profile when creating the customer account.
+        ...(mode === "signup" ? { profile: getSignupProfile() } : {}),
+      };
+
+      await login(payload);
+
+      // AuthContext now contains the backend-returned user.
       setStep("success");
     } catch (error) {
       setOtpError(
         error instanceof Error ? error.message : "Unable to verify this code.",
       );
+
       setOtpDigits(Array(OTP_LENGTH).fill(""));
+
       if (
-        error instanceof AuthError &&
-        ["TOO_MANY_ATTEMPTS", "EXPIRED"].includes(error.code)
-      )
+        [
+          "OTP_EXPIRED",
+          "OTP_NOT_FOUND",
+          "OTP_ATTEMPTS_EXCEEDED",
+          "OTP_NO_LONGER_VALID",
+          "OTP_ALREADY_USED",
+        ].includes(error?.code)
+      ) {
         setResendIn(0);
+      }
     } finally {
       setStatus("idle");
     }
@@ -518,6 +499,8 @@ export default function SignupLogin({
     setOtpError("");
     setFormError("");
     setResendIn(0);
+    setDevOtp(null);
+
     window.setTimeout(() => phoneRef.current?.focus(), 0);
   };
 
@@ -525,7 +508,10 @@ export default function SignupLogin({
     setPhone(demoPhone);
     setErrors({});
     setFormError("");
-    if (nextMode !== mode) setMode(nextMode);
+
+    if (nextMode !== mode) {
+      setMode(nextMode);
+    }
   };
 
   const formattedPhone = useMemo(
@@ -604,7 +590,8 @@ export default function SignupLogin({
         .sl-footer{display:flex;justify-content:space-between;gap:15px;margin-top:42px;padding-top:17px;border-top:1px solid var(--line);color:#999286;font-size:10px}
         .sl-footer-links{display:flex;gap:15px}
         .sl-footer a:hover{color:var(--rust)}
-        @keyframes sl-spin{to{transform:rotate(360deg)}}.sl-spin{animation:sl-spin 1s linear infinite}\n        .sl-root button:focus-visible,.sl-root a:focus-visible,.sl-root input:focus-visible,.sl-root summary:focus-visible{outline:2px solid var(--rust-dark);outline-offset:3px}
+        @keyframes sl-spin{to{transform:rotate(360deg)}}.sl-spin{animation:sl-spin 1s linear infinite}
+        .sl-root button:focus-visible,.sl-root a:focus-visible,.sl-root input:focus-visible,.sl-root summary:focus-visible{outline:2px solid var(--rust-dark);outline-offset:3px}
         @media(max-width:900px){.sl-shell{grid-template-columns:minmax(0, .8fr) minmax(400px,1fr)}.sl-panel{padding:42px 32px}.sl-visual-content{left:35px;right:35px}.sl-visual-content h2{font-size:48px}}
         @media(max-width:700px){.sl-shell{display:flex;flex-direction:column}.sl-visual{display:none}.sl-panel{min-height:100vh;align-items:flex-start;padding:27px 22px 34px}.sl-content{max-width:460px;margin:auto}.sl-mobile-brand{display:block;margin-bottom:37px}.sl-eyebrow{margin-top:0}.sl-heading{font-size:41px}.sl-tabs{margin-top:25px}.sl-form{margin-top:25px}.sl-footer{margin-top:32px}}
         @media(max-width:390px){.sl-panel{padding-left:17px;padding-right:17px}.sl-otp{gap:6px}.sl-otp input{height:49px;font-size:18px}.sl-heading{font-size:36px}}
@@ -617,22 +604,26 @@ export default function SignupLogin({
             src={HERO_IMAGE}
             alt="Traditional Hyderabadi biryani served in a handi"
           />
+
           <div className="sl-visual-content">
             <div className="sl-visual-logo">
               <BrandMark className="sl-mark" />
               <span>{BRAND.name}</span>
             </div>
+
             <h2>
               Cooked slowly.
               <br />
               Shared generously.
             </h2>
+
             <p>
               From our kitchen to your table, discover the warmth and character
               of authentic Hyderabadi food.
             </p>
+
             <div className="sl-visual-note">
-              <ShieldCheck size={16} /> A little tradition in every order
+              <ShieldCheck size={16} />A little tradition in every order
             </div>
           </div>
         </aside>
@@ -642,6 +633,7 @@ export default function SignupLogin({
             <div className="sl-mobile-brand">
               <Logo />
             </div>
+
             {step !== "success" && (
               <>
                 {showTabs && (
@@ -657,6 +649,7 @@ export default function SignupLogin({
                     >
                       Log in
                     </button>
+
                     <button
                       type="button"
                       onClick={() => setMode("signup")}
@@ -666,12 +659,15 @@ export default function SignupLogin({
                     </button>
                   </div>
                 )}
+
                 <div className="sl-eyebrow">
                   {step === "otp" ? "ONE LAST STEP" : copy.eyebrow}
                 </div>
+
                 <h1 className="sl-heading">
                   {step === "otp" ? "Verify your number." : copy.title}
                 </h1>
+
                 <p className="sl-description">
                   {step === "otp" ? (
                     <>
@@ -698,20 +694,25 @@ export default function SignupLogin({
                 <div className="sl-success-icon">
                   <Check size={26} />
                 </div>
+
                 <div className="sl-eyebrow">ALL SET</div>
+
                 <h1 className="sl-heading">
                   {mode === "signup"
                     ? "Welcome to the table."
                     : "You’re signed in."}
                 </h1>
+
                 <p className="sl-description">
-                  {user?.name ? `${user.name}, ` : ""}you’re signed in as{" "}
-                  {ROLE_LABEL[user?.role] || "a customer"}.
-                  {user?.pincode
-                    ? ` Your delivery pincode is ${user.pincode}.`
+                  {authenticatedUser?.name ? `${authenticatedUser.name}, ` : ""}
+                  you’re signed in as{" "}
+                  {ROLE_LABEL[authenticatedUser?.role] || "a customer"}.
+                  {authenticatedUser?.pincode
+                    ? ` Your delivery pincode is ${authenticatedUser.pincode}.`
                     : ""}{" "}
                   Taking you to the next page.
                 </p>
+
                 <button
                   type="button"
                   className="sl-submit"
@@ -720,22 +721,14 @@ export default function SignupLogin({
                 >
                   Continue <ArrowRight size={16} />
                 </button>
+
                 <p className="sl-success-note">
-                  Demo session only. No real authentication has taken place.
+                  Your session is verified by the backend and maintained through
+                  a secure HTTP-only cookie.
                 </p>
               </div>
             ) : (
               <>
-                {!DEMO_ENABLED && (
-                  <div style={{ marginTop: 22 }}>
-                    <Banner>
-                      Authentication is not connected in this build. An OTP
-                      provider and backend are required before real users can
-                      sign in.
-                    </Banner>
-                  </div>
-                )}
-
                 {step === "details" ? (
                   <form
                     className="sl-form"
@@ -770,9 +763,12 @@ export default function SignupLogin({
                       hint="We’ll send a one-time code to verify your number."
                     >
                       <div
-                        className={`sl-phone-input ${errors.phone ? "sl-invalid" : ""}`}
+                        className={`sl-phone-input ${
+                          errors.phone ? "sl-invalid" : ""
+                        }`}
                       >
                         <span className="sl-phone-prefix">+91</span>
+
                         <input
                           ref={phoneRef}
                           id="auth-phone"
@@ -787,11 +783,13 @@ export default function SignupLogin({
                                 .replace(/\D/g, "")
                                 .slice(0, 10),
                             );
-                            if (errors.phone)
+
+                            if (errors.phone) {
                               setErrors((previous) => ({
                                 ...previous,
                                 phone: undefined,
                               }));
+                            }
                           }}
                           placeholder="10-digit mobile number"
                           aria-label="10-digit mobile number"
@@ -824,11 +822,13 @@ export default function SignupLogin({
                                   .replace(/\D/g, "")
                                   .slice(0, 6),
                               );
-                              if (errors.pincode)
+
+                              if (errors.pincode) {
                                 setErrors((previous) => ({
                                   ...previous,
                                   pincode: undefined,
                                 }));
+                              }
                             }}
                             placeholder="Enter 6-digit pincode"
                             aria-invalid={Boolean(errors.pincode)}
@@ -839,6 +839,7 @@ export default function SignupLogin({
                             }
                           />
                         </Field>
+
                         <Field
                           id="signup-email"
                           label="Email address (optional)"
@@ -855,6 +856,7 @@ export default function SignupLogin({
                             aria-invalid={Boolean(errors.email)}
                           />
                         </Field>
+
                         <div>
                           <label className="sl-checkbox-row">
                             <input
@@ -862,13 +864,16 @@ export default function SignupLogin({
                               checked={accepted}
                               onChange={(event) => {
                                 setAccepted(event.target.checked);
-                                if (errors.terms)
+
+                                if (errors.terms) {
                                   setErrors((previous) => ({
                                     ...previous,
                                     terms: undefined,
                                   }));
+                                }
                               }}
                             />
+
                             <span>
                               I agree to the{" "}
                               <Link
@@ -887,6 +892,7 @@ export default function SignupLogin({
                               .
                             </span>
                           </label>
+
                           {errors.terms && (
                             <p className="sl-field-error" role="alert">
                               {errors.terms}
@@ -899,8 +905,8 @@ export default function SignupLogin({
                     <button className="sl-submit" type="submit" disabled={busy}>
                       {status === "sending" ? (
                         <>
-                          <Loader2 size={17} className="sl-spin" /> Sending
-                          code…
+                          <Loader2 size={17} className="sl-spin" />
+                          Sending code…
                         </>
                       ) : (
                         <>
@@ -912,6 +918,7 @@ export default function SignupLogin({
                 ) : (
                   <form className="sl-form" onSubmit={handleVerify} noValidate>
                     {formError && <Banner>{formError}</Banner>}
+
                     <Field
                       label="One-time password"
                       error={otpError}
@@ -921,22 +928,28 @@ export default function SignupLogin({
                         digits={otpDigits}
                         onChange={(next) => {
                           setOtpDigits(next);
-                          if (otpError) setOtpError("");
+
+                          if (otpError) {
+                            setOtpError("");
+                          }
                         }}
                         disabled={busy}
                         hasError={Boolean(otpError)}
                       />
                     </Field>
-                    {DEMO_ENABLED && (
+
+                    {devOtp && (
                       <Banner tone="success">
-                        Demo mode: no SMS is sent. Use code{" "}
-                        <strong>{DEMO_OTP}</strong>.
+                        Development OTP returned by backend:{" "}
+                        <strong>{devOtp}</strong>
                       </Banner>
                     )}
+
                     <button className="sl-submit" type="submit" disabled={busy}>
                       {status === "verifying" ? (
                         <>
-                          <Loader2 size={17} /> Verifying…
+                          <Loader2 size={17} className="sl-spin" />
+                          Verifying…
                         </>
                       ) : (
                         <>
@@ -944,6 +957,7 @@ export default function SignupLogin({
                         </>
                       )}
                     </button>
+
                     <div className="sl-otp-meta">
                       {resendIn > 0 ? (
                         <span>
@@ -959,10 +973,18 @@ export default function SignupLogin({
                           {status === "sending" ? "Sending…" : "Resend code"}
                         </button>
                       )}
-                      <button type="button" onClick={changeNumber}>
+
+                      <button
+                        type="button"
+                        onClick={changeNumber}
+                        disabled={busy}
+                      >
                         <ArrowLeft
                           size={13}
-                          style={{ display: "inline", verticalAlign: "middle" }}
+                          style={{
+                            display: "inline",
+                            verticalAlign: "middle",
+                          }}
                         />{" "}
                         Change number
                       </button>
@@ -980,6 +1002,7 @@ export default function SignupLogin({
                         </button>
                       </p>
                     )}
+
                     {mode === "signup" && (
                       <p>
                         Already have an account?{" "}
@@ -988,6 +1011,7 @@ export default function SignupLogin({
                         </button>
                       </p>
                     )}
+
                     {mode === "staff" && (
                       <p>
                         <button type="button" onClick={() => setMode("login")}>
@@ -995,6 +1019,7 @@ export default function SignupLogin({
                         </button>
                       </p>
                     )}
+
                     {mode !== "staff" && (
                       <p>
                         Restaurant staff?{" "}
@@ -1003,6 +1028,7 @@ export default function SignupLogin({
                         </button>
                       </p>
                     )}
+
                     {mode !== "signup" && (
                       <p className="sl-terms">
                         By continuing, you agree to our{" "}
@@ -1026,35 +1052,42 @@ export default function SignupLogin({
                     onToggle={(event) => setShowDemo(event.currentTarget.open)}
                   >
                     <summary>Development demo accounts</summary>
+
                     <p>
-                      Prefills a test number only. You must still enter the demo
-                      OTP. These accounts are not available in production.
+                      These buttons only prefill a test phone number. OTP
+                      generation and verification still happen through the
+                      backend.
                     </p>
+
                     <div className="sl-demo-actions">
                       <button
                         type="button"
-                        onClick={() => applyDemoAccount("9000000003", "login")}
+                        onClick={() => applyDemoAccount("9000000101", "login")}
                       >
                         Customer
                       </button>
+
                       <button
                         type="button"
                         onClick={() => applyDemoAccount("9000000041", "staff")}
                       >
                         Rahul · Kondapur
                       </button>
+
                       <button
                         type="button"
                         onClick={() => applyDemoAccount("9000000042", "staff")}
                       >
                         Amit · Gachibowli
                       </button>
+
                       <button
                         type="button"
                         onClick={() => applyDemoAccount("9000000043", "staff")}
                       >
                         Priya · Kukatpally
                       </button>
+
                       <button
                         type="button"
                         onClick={() => applyDemoAccount("9000000001", "staff")}
@@ -1071,6 +1104,7 @@ export default function SignupLogin({
               <span>
                 © {new Date().getFullYear()} {BRAND.name}
               </span>
+
               <span className="sl-footer-links">
                 <Link to={ROUTES.privacy}>Privacy</Link>
                 <Link to={ROUTES.terms}>Terms</Link>

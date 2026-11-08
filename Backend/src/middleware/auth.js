@@ -126,7 +126,8 @@ export function requireAssignedOutlet(req, res, next) {
       message: "Authentication required.",
     });
   }
-
+  console.log(req.user);
+  
   if (req.user.role !== "outlet_manager") {
     return res.status(403).json({
       success: false,

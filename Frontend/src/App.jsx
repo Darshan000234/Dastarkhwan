@@ -5,12 +5,16 @@ import {
   Navigate,
   useLocation,
 } from "react-router-dom";
+
 import HomeDashboard from "./components/HomePage";
 import SignupLogin from "./components/SignupLogin";
+
 import CentralAdminDashboard from "./pages/CentralAdminDashboard";
 import CustomerDashboard from "./pages/CustomerDashboard";
 import OutletManagerDashboard from "./pages/OutletManagerDashboard";
+
 import RoleGate from "./routes/RoleGate";
+
 import "./App.css";
 import "./styles/admin.css";
 import "./styles/customer.css";
@@ -18,7 +22,13 @@ import "./styles/manager.css";
 
 function CustomerLegacyRedirect({ to = "/customer" }) {
   const location = useLocation();
-  return <Navigate to={`${to}${location.search}${location.hash}`} replace />;
+
+  return (
+    <Navigate
+      to={`${to}${location.search}${location.hash}`}
+      replace
+    />
+  );
 }
 
 function LegacyOutletRedirect() {
@@ -26,7 +36,7 @@ function LegacyOutletRedirect() {
 
   const remainingPath = location.pathname.replace(
     /^\/outlet(?=\/|$)/,
-    ''
+    "",
   );
 
   return (
@@ -41,26 +51,56 @@ function App() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* Existing public homepage and authentication are preserved. */}
+        {/* Public homepage */}
         <Route path="/" element={<HomeDashboard />} />
+
+        {/* Public authentication routes */}
         <Route path="/auth" element={<SignupLogin />} />
-        <Route path="/login" element={<SignupLogin initialMode="login" />} />
-        <Route path="/signup" element={<SignupLogin initialMode="signup" />} />
+
+        <Route
+          path="/login"
+          element={<SignupLogin initialMode="login" />}
+        />
+
+        <Route
+          path="/signup"
+          element={<SignupLogin initialMode="signup" />}
+        />
+
         <Route
           path="/staff-login"
           element={<SignupLogin initialMode="staff" />}
         />
 
-        {/* Existing customer entry paths used by HomePage.jsx and SignupLogin.jsx. */}
-        <Route path="/order" element={<CustomerLegacyRedirect />} />
-        <Route path="/menu" element={<CustomerLegacyRedirect />} />
+        {/* Legacy customer entry routes */}
         <Route
-          path="/catering"
-          element={<CustomerLegacyRedirect to="/customer/catering" />}
+          path="/order"
+          element={<CustomerLegacyRedirect />}
         />
 
-        {/* New customer application and existing Central Admin application. */}
-        <Route path="/customer/*" element={<CustomerDashboard />} />
+        <Route
+          path="/menu"
+          element={<CustomerLegacyRedirect />}
+        />
+
+        <Route
+          path="/catering"
+          element={
+            <CustomerLegacyRedirect to="/customer/catering" />
+          }
+        />
+
+        {/* Customer routes */}
+        <Route
+          path="/customer/*"
+          element={
+            <RoleGate role="customer">
+              <CustomerDashboard />
+            </RoleGate>
+          }
+        />
+
+        {/* Central Admin routes */}
         <Route
           path="/admin/*"
           element={
@@ -69,9 +109,14 @@ function App() {
             </RoleGate>
           }
         />
-        {/* Outlet Manager */}
-        <Route path="/outlet/*" element={<LegacyOutletRedirect />} />
 
+        {/* Legacy outlet-manager route */}
+        <Route
+          path="/outlet/*"
+          element={<LegacyOutletRedirect />}
+        />
+
+        {/* Outlet Manager routes */}
         <Route
           path="/manager/*"
           element={
@@ -80,8 +125,6 @@ function App() {
             </RoleGate>
           }
         />
-
-        {/* Preserve the outlet-manager route if it is already implemented in your app. */}
       </Routes>
     </BrowserRouter>
   );

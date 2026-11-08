@@ -1,19 +1,53 @@
-import { Navigate } from "react-router-dom";
+import { Navigate, useLocation } from "react-router-dom";
+import { useAuth } from "../context/AuthContext.jsx";
+
+const ROLE_HOME = {
+  customer: "/customer",
+  outlet_manager: "/manager",
+  central_admin: "/admin",
+};
 
 export default function RoleGate({ role, children }) {
-  let session = null;
-  try {
-    session = JSON.parse(sessionStorage.getItem("demo_auth_session") || "null");
-  } catch {
-    session = null;
+  const { user, loading } = useAuth();
+  const location = useLocation();
+
+  if (loading) {
+    return (
+      <div
+        role="status"
+        aria-live="polite"
+        style={{
+          minHeight: "100vh",
+          display: "grid",
+          placeItems: "center",
+          padding: 24,
+          color: "#716d65",
+          fontSize: 14,
+        }}
+      >
+        Checking your session...
+      </div>
+    );
   }
-  if (!session?.role) return <Navigate to="/auth?mode=staff" replace />;
-  if (session.role !== role) {
-    if (session.role === "outlet_manager")
-      return <Navigate to="/manager" replace />;
-    if (session.role === "central_admin")
-      return <Navigate to="/admin" replace />;
-    return <Navigate to="/auth?mode=staff" replace />;
+
+  if (!user) {
+    const loginPath =
+      role === "customer" ? "/login" : "/staff-login";
+
+    return (
+      <Navigate
+        to={loginPath}
+        replace
+        state={{ from: location }}
+      />
+    );
   }
+
+  if (user.role !== role) {
+    const destination = ROLE_HOME[user.role] || "/auth";
+
+    return <Navigate to={destination} replace />;
+  }
+
   return children;
 }
