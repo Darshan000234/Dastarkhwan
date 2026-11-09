@@ -263,73 +263,6 @@ export function CustomerProvider({ children }) {
     logout,
     redirectToLogin,
   ]);
-
-  useEffect(() => {
-    if (authLoading || user?.role !== "customer") {
-      return undefined;
-    }
-
-    let active = true;
-    let reconnecting = false;
-
-    const socket = socketClient.connect();
-
-    const refreshCustomerOrders = async () => {
-      try {
-        await refreshOrders();
-      } catch (error) {
-        if (active) {
-          console.error(
-            "Unable to refresh customer orders after socket event:",
-            error,
-          );
-        }
-      }
-    };
-
-    const onOrderStatusUpdated = () => {
-      if (!active) return;
-
-      refreshOrders();
-    };
-
-    const onOrderEtaUpdated = () => {
-      if (!active) return;
-
-      refreshOrders();
-    };
-
-    const onConnect = () => {
-      if (!active) return;
-
-      if (reconnecting) {
-        refreshCustomerOrders();
-      }
-
-      reconnecting = true;
-    };
-
-    const onDisconnect = () => {
-      reconnecting = true;
-    };
-
-    socket.on("order:status-updated", onOrderStatusUpdated);
-    socket.on("order:eta-updated", onOrderEtaUpdated);
-    socket.on("connect", onConnect);
-    socket.on("disconnect", onDisconnect);
-
-    return () => {
-      active = false;
-
-      socket.off("order:status-updated", onOrderStatusUpdated);
-      socket.off("order:eta-updated", onOrderEtaUpdated);
-      socket.off("connect", onConnect);
-      socket.off("disconnect", onDisconnect);
-
-      socketClient.disconnect();
-    };
-  }, [authLoading, user?.id, user?.role, refreshOrders]);
-
   const refresh = useCallback(async () => {
     const result = await withCustomerAuth(loadCustomerData);
 
@@ -1006,6 +939,71 @@ export function CustomerProvider({ children }) {
 
     return result.orders || [];
   }, [withCustomerAuth]);
+  useEffect(() => {
+    if (authLoading || user?.role !== "customer") {
+      return undefined;
+    }
+
+    let active = true;
+    let reconnecting = false;
+
+    const socket = socketClient.connect();
+
+    const refreshCustomerOrders = async () => {
+      try {
+        await refreshOrders();
+      } catch (error) {
+        if (active) {
+          console.error(
+            "Unable to refresh customer orders after socket event:",
+            error,
+          );
+        }
+      }
+    };
+
+    const onOrderStatusUpdated = () => {
+      if (!active) return;
+
+      refreshOrders();
+    };
+
+    const onOrderEtaUpdated = () => {
+      if (!active) return;
+
+      refreshOrders();
+    };
+
+    const onConnect = () => {
+      if (!active) return;
+
+      if (reconnecting) {
+        refreshCustomerOrders();
+      }
+
+      reconnecting = true;
+    };
+
+    const onDisconnect = () => {
+      reconnecting = true;
+    };
+
+    socket.on("order:status-updated", onOrderStatusUpdated);
+    socket.on("order:eta-updated", onOrderEtaUpdated);
+    socket.on("connect", onConnect);
+    socket.on("disconnect", onDisconnect);
+
+    return () => {
+      active = false;
+
+      socket.off("order:status-updated", onOrderStatusUpdated);
+      socket.off("order:eta-updated", onOrderEtaUpdated);
+      socket.off("connect", onConnect);
+      socket.off("disconnect", onDisconnect);
+
+      socketClient.disconnect();
+    };
+  }, [authLoading, user?.id, user?.role, refreshOrders]);
 
   const refreshLoyalty = useCallback(async () => {
     const [summary, transactionData] = await withCustomerAuth(() =>

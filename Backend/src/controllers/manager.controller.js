@@ -6,7 +6,6 @@ import {
   assertAllowedKeys,
   validateId,
 } from "../utils/customerDomain.js";
-import { emitOrderStatusUpdated } from "../services/realtime.js";
 import {
   emitOrderStatusUpdated,
   emitOrderEtaUpdated,
