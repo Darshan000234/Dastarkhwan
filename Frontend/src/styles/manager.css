@@ -2423,6 +2423,28 @@
 .om-kds-column > header h2 {
   font-size: 17px;
 }
+
+.om-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 16px 18px;
+  border-top: 1px solid var(--om-border, #e8e5dd);
+}
+
+.om-pagination > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+@media (max-width: 600px) {
+  .om-pagination {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
 @media (max-width: 900px) {
   .om-detail-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));

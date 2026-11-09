@@ -50,10 +50,9 @@ export default function CustomerLayout() {
       </main>
       <CustomerFooter />
       <CartDrawer open={cartOpen} onClose={() => setCartOpen(false)} />
-      <LocationModal
-        open={locationOpen}
-        onClose={() => setLocationOpen(false)}
-      />
+      {locationOpen && (
+        <LocationModal open onClose={() => setLocationOpen(false)} />
+      )}
       {pendingLocation && (
         <div className="cu-overlay cu-switch-overlay">
           <section className="cu-modal cu-switch-modal">

@@ -14,6 +14,7 @@ import customerApi from "../services/customerApi.js";
 import { cartLineKey } from "../utils/customerPricing.js";
 
 const CustomerContext = createContext(null);
+const EMPTY_CATALOG = Object.freeze([]);
 
 const EMPTY_LOYALTY = {
   balance: 0,
@@ -84,7 +85,7 @@ export function CustomerProvider({ children }) {
   const [loadError, setLoadError] = useState("");
 
   const [outlets, setOutlets] = useState([]);
-  const [catalog, setCatalog] = useState([]);
+  const catalog = EMPTY_CATALOG;
   const [orders, setOrders] = useState([]);
   const [settings] = useState({});
 

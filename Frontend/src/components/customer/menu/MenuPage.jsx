@@ -1,12 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import {
-  ArrowDown,
-  Clock3,
-  MapPin,
-  Search,
-  Utensils,
-} from "lucide-react";
+import { ArrowDown, Clock3, MapPin, Search, Utensils } from "lucide-react";
 
 import { useCustomer } from "../../../context/CustomerContext";
 import customerApi from "../../../services/customerApi";
@@ -38,22 +32,33 @@ export default function MenuPage() {
   const [loadedKey, setLoadedKey] = useState("");
   const [menuError, setMenuError] = useState("");
 
-  const [pincode, setPincode] = useState(selectedPincode || "");
+  const [pincodeDraft, setPincodeDraft] = useState(() => ({
+    sourcePincode: selectedPincode || "",
+    value: selectedPincode || "",
+  }));
+
+  const pincode =
+    pincodeDraft.sourcePincode === (selectedPincode || "")
+      ? pincodeDraft.value
+      : selectedPincode || "";
+
+  const updatePincode = (value) => {
+    setPincodeDraft({
+      sourcePincode: selectedPincode || "",
+      value,
+    });
+  };
   const [pincodeError, setPincodeError] = useState("");
 
   const [searchParams, setSearchParams] = useSearchParams();
 
   const searchRef = useRef(null);
 
-  const outlet = outlets.find(
-    (entry) => entry.id === selectedOutletId,
-  );
+  const outlet = outlets.find((entry) => entry.id === selectedOutletId);
 
   const requestKey = `${selectedPincode}:${selectedOutletId}`;
 
-  const loading = Boolean(
-    selectedOutletId && loadedKey !== requestKey,
-  );
+  const loading = Boolean(selectedOutletId && loadedKey !== requestKey);
 
   /* ======================================================
      LOAD ACTUAL OUTLET MENU
@@ -98,26 +103,14 @@ export default function MenuPage() {
         if (!active) return;
 
         setMenuError(error.message || "Unable to load this outlet menu.");
-        notify(
-          error.message || "Unable to load this outlet menu.",
-          "error",
-        );
+        notify(error.message || "Unable to load this outlet menu.", "error");
         setLoadedKey(requestKey);
       });
 
     return () => {
       active = false;
     };
-  }, [
-    selectedOutletId,
-    selectedPincode,
-    requestKey,
-    notify,
-  ]);
-
-  useEffect(() => {
-    setPincode(selectedPincode || "");
-  }, [selectedPincode]);
+  }, [selectedOutletId, selectedPincode, requestKey, notify]);
 
   /* ======================================================
      SEARCH PARAMS AND LOCATION SHORTCUT
@@ -134,18 +127,11 @@ export default function MenuPage() {
     if (incoming && incoming !== selectedPincode) {
       requestLocation(incoming).then((result) => {
         if (result?.serviceable && result.outlets?.length > 1) {
-          window.dispatchEvent(
-            new Event("dastarkhwan:open-location"),
-          );
+          window.dispatchEvent(new Event("dastarkhwan:open-location"));
         }
       });
     }
-  }, [
-    searchParams,
-    selectedPincode,
-    requestLocation,
-    setSearchParams,
-  ]);
+  }, [searchParams, selectedPincode, requestLocation, setSearchParams]);
 
   const filtered = useMemo(
     () =>
@@ -162,14 +148,9 @@ export default function MenuPage() {
             .includes(query);
 
         const matchesType =
-          foodType === "all" ||
-          (foodType === "veg" ? item.veg : !item.veg);
+          foodType === "all" || (foodType === "veg" ? item.veg : !item.veg);
 
-        return (
-          matchesCategory &&
-          matchesSearch &&
-          matchesType
-        );
+        return matchesCategory && matchesSearch && matchesType;
       }),
     [menu, category, search, foodType],
   );
@@ -187,17 +168,13 @@ export default function MenuPage() {
     const result = await requestLocation(pincode);
 
     if (!result.serviceable) {
-      setPincodeError(
-        result.reason || "No active outlet serves this pincode.",
-      );
+      setPincodeError(result.reason || "No active outlet serves this pincode.");
 
       return;
     }
 
     if (result.outlets?.length > 1) {
-      window.dispatchEvent(
-        new Event("dastarkhwan:open-location"),
-      );
+      window.dispatchEvent(new Event("dastarkhwan:open-location"));
     }
   };
 
@@ -210,10 +187,7 @@ export default function MenuPage() {
 
       setSelectedItem(result.item);
     } catch (error) {
-      notify(
-        error.message || "Unable to load this dish's details.",
-        "error",
-      );
+      notify(error.message || "Unable to load this dish's details.", "error");
     }
   };
 
@@ -221,9 +195,7 @@ export default function MenuPage() {
     return (
       <div className="cu-page cu-no-location">
         <section className="cu-location-hero">
-          <span className="cu-eyebrow">
-            FRESH FROM OUR HYDERABADI KITCHEN
-          </span>
+          <span className="cu-eyebrow">FRESH FROM OUR HYDERABADI KITCHEN</span>
 
           <h1>
             First, where should
@@ -232,43 +204,33 @@ export default function MenuPage() {
           </h1>
 
           <p>
-            Your pincode helps us show the kitchen, dishes and
-            delivery options available for your address.
+            Your pincode helps us show the kitchen, dishes and delivery options
+            available for your address.
           </p>
 
           <form
             className="cu-pincode-form cu-pincode-large"
             onSubmit={submitPincode}
           >
-            <label htmlFor="cu-home-pincode">
-              Delivery pincode
-            </label>
+            <label htmlFor="cu-home-pincode">Delivery pincode</label>
 
             <div>
               <input
                 id="cu-home-pincode"
                 value={pincode}
                 onChange={(event) =>
-                  setPincode(
-                    event.target.value.replace(/\D/g, ""),
-                  )
+                  updatePincode(event.target.value.replace(/\D/g, ""))
                 }
                 maxLength={6}
                 inputMode="numeric"
                 placeholder="Enter 6-digit pincode"
               />
 
-              <button className="cu-button">
-                Check availability
-              </button>
+              <button className="cu-button">Check availability</button>
             </div>
           </form>
 
-          {pincodeError && (
-            <p className="cu-form-error">
-              {pincodeError}
-            </p>
-          )}
+          {pincodeError && <p className="cu-form-error">{pincodeError}</p>}
         </section>
 
         <div className="cu-location-photo">
@@ -286,14 +248,10 @@ export default function MenuPage() {
       <section className="cu-outlet-strip">
         <div className="cu-outlet-heading">
           <span
-            className={`cu-outlet-status ${
-              outlet.active ? "" : "is-closed"
-            }`}
+            className={`cu-outlet-status ${outlet.active ? "" : "is-closed"}`}
           >
             <i />
-            {outlet.active
-              ? "ACCEPTING ORDERS"
-              : "NOT ACCEPTING ORDERS"}
+            {outlet.active ? "ACCEPTING ORDERS" : "NOT ACCEPTING ORDERS"}
           </span>
 
           <h1>{outlet.name}</h1>
@@ -313,9 +271,7 @@ export default function MenuPage() {
 
           <button
             onClick={() =>
-              window.dispatchEvent(
-                new Event("dastarkhwan:open-location"),
-              )
+              window.dispatchEvent(new Event("dastarkhwan:open-location"))
             }
           >
             Change location
@@ -325,17 +281,13 @@ export default function MenuPage() {
 
       <section className="cu-menu-hero">
         <div className="cu-menu-hero-copy">
-          <span className="cu-eyebrow">
-            THE HYDERABADI TABLE
-          </span>
+          <span className="cu-eyebrow">THE HYDERABADI TABLE</span>
 
-          <h2>
-            Authentic Hyderabad flavours, delivered to your table.
-          </h2>
+          <h2>Authentic Hyderabad flavours, delivered to your table.</h2>
 
           <p>
-            Slow-cooked biryanis, familiar favourites and
-            something sweet to finish.
+            Slow-cooked biryanis, familiar favourites and something sweet to
+            finish.
           </p>
 
           <button
@@ -363,9 +315,7 @@ export default function MenuPage() {
         <section className="cu-popular-section">
           <div className="cu-section-heading">
             <div>
-              <span className="cu-eyebrow">
-                A GOOD PLACE TO START
-              </span>
+              <span className="cu-eyebrow">A GOOD PLACE TO START</span>
               <h2>Customer favourites</h2>
             </div>
 
@@ -379,10 +329,7 @@ export default function MenuPage() {
                 className="cu-popular-item"
                 onClick={() => openItemDetails(item)}
               >
-                <FoodImage
-                  src={item.image}
-                  alt={item.name}
-                />
+                <FoodImage src={item.image} alt={item.name} />
 
                 <span>
                   <strong>{item.name}</strong>
@@ -394,21 +341,14 @@ export default function MenuPage() {
         </section>
       )}
 
-      <section
-        className="cu-catalog-section"
-        id="cu-menu-catalog"
-      >
+      <section className="cu-catalog-section" id="cu-menu-catalog">
         <div className="cu-section-heading">
           <div>
-            <span className="cu-eyebrow">
-              COOKED FRESH, ORDERED EASY
-            </span>
+            <span className="cu-eyebrow">COOKED FRESH, ORDERED EASY</span>
             <h2>Explore the menu</h2>
           </div>
 
-          <span>
-            {menu.length} dishes assigned to this kitchen
-          </span>
+          <span>{menu.length} dishes assigned to this kitchen</span>
         </div>
 
         <div className="cu-menu-toolbar">
@@ -430,11 +370,7 @@ export default function MenuPage() {
                 className={foodType === entry ? "is-active" : ""}
                 onClick={() => setFoodType(entry)}
               >
-                {entry === "all"
-                  ? "All"
-                  : entry === "veg"
-                    ? "Veg"
-                    : "Non-veg"}
+                {entry === "all" ? "All" : entry === "veg" ? "Veg" : "Non-veg"}
               </button>
             ))}
           </div>
@@ -463,9 +399,7 @@ export default function MenuPage() {
             ))}
           </div>
         ) : menuError ? (
-          <div className="cu-inline-warning">
-            {menuError}
-          </div>
+          <div className="cu-inline-warning">{menuError}</div>
         ) : filtered.length ? (
           <div className="cu-food-grid">
             {filtered.map((item) => (
@@ -494,8 +428,8 @@ export default function MenuPage() {
         <Utensils size={18} />
 
         <span>
-          Every dish is shown only when it is assigned to this
-          outlet. Prices shown are GST-inclusive.
+          Every dish is shown only when it is assigned to this outlet. Prices
+          shown are GST-inclusive.
         </span>
       </section>
 

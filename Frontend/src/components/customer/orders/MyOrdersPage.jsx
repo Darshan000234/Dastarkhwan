@@ -18,7 +18,6 @@ export default function MyOrdersPage() {
     refreshOrders,
     selectedPincode,
     selectedOutletId,
-    selectedAddressId,
     requestLocation,
     chooseOutlet,
     addToCart,

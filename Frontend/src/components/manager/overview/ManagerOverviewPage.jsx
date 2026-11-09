@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import {
   Activity,
   AlertTriangle,
@@ -11,43 +11,41 @@ import {
   Timer,
 } from "lucide-react";
 import { Link } from "react-router-dom";
+
 import { useManager } from "../../../context/ManagerContext";
 import { useOrderTimer, timerState } from "../../../hooks/useOrderTimer";
+
 import {
   Badge,
   Empty,
   ManagerPageHeader,
   MetricCard,
   Panel,
-  dateTime,
   money,
   timeOnly,
 } from "../common/ManagerUI";
+
 import ManagerOrderDetailsDrawer from "../orders/ManagerOrderDetailsDrawer";
+
 export default function ManagerOverviewPage() {
-  const { outlet, manager, orders, menu, overview } = useManager();
+  const { outlet, manager, orders, overview } = useManager();
+
   const [selected, setSelected] = useState(null);
   const now = useOrderTimer();
-  const popular = useMemo(() => {
-    const rows = new Map();
-    orders
-      .filter((order) => order.paymentStatus === "Succeeded")
-      .forEach((order) =>
-        (order.items || []).forEach((item) => {
-          const key = item.itemId || item.name;
-          const value = rows.get(key) || {
-            name: item.name,
-            qty: 0,
-            revenue: 0,
-          };
-          value.qty += Number(item.qty || 1);
-          value.revenue += Number(item.qty || 1) * Number(item.price || 0);
-          rows.set(key, value);
-        }),
-      );
-    return [...rows.values()].sort((a, b) => b.qty - a.qty).slice(0, 5);
-  }, [orders]);
+
+  const popular = overview?.popular || [];
   const kpi = overview || {};
+
+  const openAlertOrder = (alert) => {
+    if (!alert.orderId) return;
+
+    const order = orders.find(
+      (entry) => entry.id === alert.orderId,
+    );
+
+    if (order) setSelected(order);
+  };
+
   return (
     <>
       <ManagerPageHeader
@@ -60,24 +58,30 @@ export default function ManagerOverviewPage() {
           </Link>
         }
       />
+
       <section className="om-outlet-banner">
         <div>
           <span className="om-eyebrow">ASSIGNED OUTLET</span>
-          <h2>{outlet.name}</h2>
+          <h2>{outlet?.name}</h2>
           <p>
-            {outlet.type} · {outlet.city} · {outlet.address}
+            {outlet?.type} · {outlet?.city} · {outlet?.address}
           </p>
         </div>
+
         <div className="om-outlet-banner-meta">
-          <Badge tone={outlet.active ? "success" : "danger"}>
-            {outlet.active ? "Operational" : "Inactive"}
+          <Badge tone={outlet?.active ? "success" : "danger"}>
+            {outlet?.active ? "Operational" : "Inactive"}
           </Badge>
+
           <span>
-            <Clock3 size={14} /> {outlet.openTime}–{outlet.closeTime} IST
+            <Clock3 size={14} />
+            {outlet?.openTime}–{outlet?.closeTime} IST
           </span>
-          <span>Manager: {manager.name}</span>
+
+          <span>Manager: {manager?.name}</span>
         </div>
       </section>
+
       <div className="om-metric-grid">
         <MetricCard
           icon={ClipboardList}
@@ -85,6 +89,7 @@ export default function ManagerOverviewPage() {
           value={kpi.ordersToday ?? 0}
           note="All order states"
         />
+
         <MetricCard
           icon={Activity}
           label="Active orders"
@@ -92,13 +97,15 @@ export default function ManagerOverviewPage() {
           note="Paid · in kitchen or handoff"
           tone="olive"
         />
+
         <MetricCard
           icon={Timer}
           label="Avg. prep time"
-          value={`${kpi.averagePrep ?? 0} min`}
-          note="Recorded durations or seeded estimates"
+          value={`${kpi.averagePrep ?? kpi.averagePreparationMinutes ?? 0} min`}
+          note="Backend preparation metric"
           tone="olive"
         />
+
         <MetricCard
           icon={AlertTriangle}
           label="Late orders"
@@ -106,6 +113,7 @@ export default function ManagerOverviewPage() {
           note="Past promised time"
           tone="red"
         />
+
         <MetricCard
           icon={CheckCircle2}
           label="Completed"
@@ -113,13 +121,15 @@ export default function ManagerOverviewPage() {
           note="Handed off successfully"
           tone="olive"
         />
+
         <MetricCard
           icon={IndianRupee}
           label="Revenue today"
-          value={money(kpi.revenueToday)}
-          note="Paid orders only"
-        />{" "}
+          value={money(kpi.revenueToday ?? kpi.revenue)}
+          note="Backend-reported paid revenue"
+        />
       </div>
+
       <div className="om-overview-grid">
         <Panel
           title="Kitchen workload"
@@ -135,19 +145,23 @@ export default function ManagerOverviewPage() {
               <strong>{kpi.queue?.new || 0}</strong>
               <span>New</span>
             </div>
+
             <div>
               <strong>{kpi.queue?.preparing || 0}</strong>
               <span>Preparing</span>
             </div>
+
             <div>
               <strong>{kpi.queue?.ready || 0}</strong>
               <span>Ready</span>
             </div>
+
             <div className="late">
               <strong>{kpi.queue?.late || 0}</strong>
               <span>Late</span>
             </div>
           </div>
+
           <div className="om-queue-foot">
             Timers refresh locally · current time{" "}
             {new Date(now).toLocaleTimeString("en-IN", {
@@ -158,6 +172,7 @@ export default function ManagerOverviewPage() {
             IST
           </div>
         </Panel>
+
         <Panel
           title="Attention required"
           subtitle="Alerts derived from your outlet data"
@@ -169,20 +184,18 @@ export default function ManagerOverviewPage() {
                   key={alert.id}
                   type="button"
                   className={`om-alert-row ${alert.tone}`}
-                  onClick={() =>
-                    alert.orderId &&
-                    setSelected(
-                      orders.find((order) => order.id === alert.orderId),
-                    )
-                  }
+                  onClick={() => openAlertOrder(alert)}
+                  disabled={!alert.orderId}
                 >
                   <span>
                     <AlertTriangle size={16} />
                   </span>
+
                   <div>
                     <strong>{alert.title}</strong>
                     <small>{alert.detail}</small>
                   </div>
+
                   {alert.orderId && <ArrowRight size={15} />}
                 </button>
               ))}
@@ -195,6 +208,7 @@ export default function ManagerOverviewPage() {
           )}
         </Panel>
       </div>
+
       <div className="om-overview-grid">
         <Panel
           title="Recent orders"
@@ -208,14 +222,18 @@ export default function ManagerOverviewPage() {
           {orders.length ? (
             <div className="om-recent-list">
               {[...orders]
-                .sort((a, b) => new Date(b.placedAt) - new Date(a.placedAt))
+                .sort(
+                  (a, b) =>
+                    new Date(b.placedAt) - new Date(a.placedAt),
+                )
                 .slice(0, 6)
                 .map((order) => {
                   const timer = timerState(order, now);
+
                   return (
                     <button
                       type="button"
-                      key={order.id}
+                      key={order.orderId}
                       className="om-recent-row"
                       onClick={() => setSelected(order)}
                     >
@@ -225,19 +243,21 @@ export default function ManagerOverviewPage() {
                           {order.customer} · {order.itemSummary}
                         </small>
                       </div>
+
                       <div>
                         <Badge
                           tone={
-                            order.paymentStatus === "Succeeded"
+                            order.rawPaymentStatus === "SUCCEEDED"
                               ? "success"
                               : "warning"
                           }
                         >
                           {order.status}
                         </Badge>
+
                         <small>
                           {timeOnly(order.placedAt)} ·{" "}
-                          {order.status === "Preparing"
+                          {order.rawStatus === "PREPARING"
                             ? timer.label
                             : order.paymentStatus}
                         </small>
@@ -253,16 +273,24 @@ export default function ManagerOverviewPage() {
             />
           )}
         </Panel>
-        <Panel title="Popular dishes" subtitle="Ranked by paid item quantity">
+
+        <Panel
+          title="Popular dishes"
+          subtitle="Ranked by paid item quantity"
+        >
           {popular.length ? (
             <div className="om-popular-list">
               {popular.map((item, index) => (
-                <div key={item.name}>
-                  <span className="om-rank">0{index + 1}</span>
+                <div key={item.id || item.name}>
+                  <span className="om-rank">
+                    {String(index + 1).padStart(2, "0")}
+                  </span>
+
                   <div>
                     <strong>{item.name}</strong>
-                    <small>{item.qty} ordered</small>
+                    <small>{item.quantity} ordered</small>
                   </div>
+
                   <b>{money(item.revenue)}</b>
                 </div>
               ))}
@@ -270,11 +298,12 @@ export default function ManagerOverviewPage() {
           ) : (
             <Empty
               title="No sales data"
-              detail="Paid order items will appear here."
+              detail="The backend has not returned popular dish data for today."
             />
           )}
         </Panel>
       </div>
+
       <ManagerOrderDetailsDrawer
         order={selected}
         onClose={() => setSelected(null)}
@@ -282,6 +311,7 @@ export default function ManagerOverviewPage() {
     </>
   );
 }
+
 function ChefIcon() {
   return <PackageCheck size={16} />;
 }

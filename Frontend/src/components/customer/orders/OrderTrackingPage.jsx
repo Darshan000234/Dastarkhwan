@@ -50,21 +50,19 @@ export default function OrderTrackingPage() {
   const [tracking, setTracking] = useState(null);
   const [timeline, setTimeline] = useState([]);
 
-  const [loading, setLoading] = useState(true);
+  const [loadedOrderId, setLoadedOrderId] = useState(null);
+
+  const loading = loadedOrderId !== orderId;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
   const load = useCallback(async () => {
-    setError("");
-    setBusy(true);
-
     try {
-      const [orderResult, trackingResult, timelineResult] =
-        await Promise.all([
-          customerApi.getOrder(orderId),
-          customerApi.getOrderTracking(orderId),
-          customerApi.getOrderTimeline(orderId),
-        ]);
+      const [orderResult, trackingResult, timelineResult] = await Promise.all([
+        customerApi.getOrder(orderId),
+        customerApi.getOrderTracking(orderId),
+        customerApi.getOrderTimeline(orderId),
+      ]);
 
       if (!orderResult) {
         throw new Error("The backend did not return this order.");
@@ -73,13 +71,6 @@ export default function OrderTrackingPage() {
       setOrder(orderResult);
       setTracking(trackingResult);
 
-      /*
-       * OrderTimeline expects:
-       * [{ label: "Placed", time: "..." }]
-       *
-       * The backend timeline returns:
-       * [{ description, toStatus, timestamp }]
-       */
       const mappedTimeline = (timelineResult.timeline || [])
         .filter((event) => event.toStatus || event.description)
         .map((event) => ({
@@ -90,6 +81,7 @@ export default function OrderTrackingPage() {
         }));
 
       setTimeline(mappedTimeline);
+      setError("");
     } catch (err) {
       setError(err.message || "Unable to load this order.");
       setOrder(null);
@@ -97,13 +89,18 @@ export default function OrderTrackingPage() {
       setTimeline([]);
     } finally {
       setBusy(false);
-      setLoading(false);
+      setLoadedOrderId(orderId);
     }
   }, [orderId]);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  const refresh = async () => {
+    setBusy(true);
+    await load();
+  };
 
   if (loading) {
     return (
@@ -132,7 +129,7 @@ export default function OrderTrackingPage() {
           <button
             className="cu-button-secondary"
             disabled={busy}
-            onClick={load}
+            onClick={refresh}
           >
             <RefreshCw size={15} /> Try again
           </button>
@@ -143,8 +140,7 @@ export default function OrderTrackingPage() {
 
   const placedAt = order.placedAt ? new Date(order.placedAt) : null;
 
-  const promisedAt =
-    tracking?.promisedAt || order.promisedAt || null;
+  const promisedAt = tracking?.promisedAt || order.promisedAt || null;
 
   const cancelled = order.status === "Cancelled";
   const handedOff = order.status === "Handed Off";
@@ -161,9 +157,7 @@ export default function OrderTrackingPage() {
       </Link>
 
       <div className="cu-order-success">
-        <span className="cu-success-check">
-          {cancelled ? "!" : "✓"}
-        </span>
+        <span className="cu-success-check">{cancelled ? "!" : "✓"}</span>
 
         <div>
           <span className="cu-eyebrow">
@@ -225,12 +219,8 @@ export default function OrderTrackingPage() {
             </span>
 
             <strong>
-              {tracking?.estimatedPrepMinutes ??
-                order.prepMinutes ??
-                "—"}{" "}
-              {tracking?.estimatedPrepMinutes || order.prepMinutes
-                ? "min"
-                : ""}
+              {tracking?.estimatedPrepMinutes ?? order.prepMinutes ?? "—"}{" "}
+              {tracking?.estimatedPrepMinutes || order.prepMinutes ? "min" : ""}
             </strong>
 
             <small>
@@ -260,8 +250,8 @@ export default function OrderTrackingPage() {
           </button>
 
           <small className="cu-demo-caption">
-            Status and timeline are retrieved from the backend. This page
-            does not simulate kitchen transitions.
+            Status and timeline are retrieved from the backend. This page does
+            not simulate kitchen transitions.
           </small>
 
           {error && <p className="cu-form-error">{error}</p>}
@@ -271,14 +261,14 @@ export default function OrderTrackingPage() {
           <span className="cu-eyebrow">ORDER SUMMARY</span>
 
           <h2>
-            {order.outletSnapshot?.name || tracking?.outlet?.name || "Dastarkhwan outlet"}
+            {order.outletSnapshot?.name ||
+              tracking?.outlet?.name ||
+              "Dastarkhwan outlet"}
           </h2>
 
           <p>
-            <MapPin size={14} />{" "}
-            {order.address?.house || "Delivery address"},{" "}
-            {order.address?.street || ""},{" "}
-            {order.address?.pincode || ""}
+            <MapPin size={14} /> {order.address?.house || "Delivery address"},{" "}
+            {order.address?.street || ""}, {order.address?.pincode || ""}
           </p>
 
           <div className="cu-order-items-list">

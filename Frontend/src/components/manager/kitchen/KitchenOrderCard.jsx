@@ -1,14 +1,15 @@
 import {
   ArrowRight,
-  Clock3,
   Eye,
   Flame,
   PackageCheck,
   Play,
   CheckCircle2,
 } from "lucide-react";
+
 import { Badge, money, timeOnly } from "../common/ManagerUI";
 import OrderTimer from "./OrderTimer";
+
 export default function KitchenOrderCard({
   order,
   now,
@@ -17,37 +18,52 @@ export default function KitchenOrderCard({
   busy,
 }) {
   const action =
-    order.status === "Placed"
-      ? { label: "Accept Order", icon: CheckCircle2, next: "Accepted" }
-      : order.status === "Accepted"
-        ? { label: "Start Preparing", icon: Play, next: "Preparing" }
-        : order.status === "Preparing"
-          ? { label: "Mark as Ready", icon: PackageCheck, next: "Ready" }
-          : order.status === "Ready"
+    order.rawStatus === "PLACED"
+      ? {
+          label: "Accept Order",
+          icon: CheckCircle2,
+          next: "ACCEPTED",
+        }
+      : order.rawStatus === "ACCEPTED"
+        ? {
+            label: "Start Preparing",
+            icon: Play,
+            next: "PREPARING",
+          }
+        : order.rawStatus === "PREPARING"
+          ? {
+              label: "Mark as Ready",
+              icon: PackageCheck,
+              next: "READY",
+            }
+          : order.rawStatus === "READY"
             ? {
                 label: "Mark Handed Off",
                 icon: CheckCircle2,
-                next: "Handed Off",
+                next: "HANDED_OFF",
               }
             : null;
+
   const ActionIcon = action?.icon;
-  const late = new Date(order.promisedAt).getTime() < now;
+  const late = Boolean(order.isLate);
+
   return (
     <article
-      className={`om-kitchen-card ${late ? "is-late" : ""} ${order.criticalLateNotifiedAt ? "is-critical" : ""}`}
+      className={`om-kitchen-card ${late ? "is-late" : ""}`}
     >
       <div className="om-kitchen-card-top">
         <div>
           <span className="om-order-number">{order.id}</span>
           <small>Received {timeOnly(order.placedAt)}</small>
         </div>
+
         <Badge
           tone={
-            order.status === "Ready"
+            order.rawStatus === "READY"
               ? "success"
               : late
                 ? "danger"
-                : order.status === "Placed"
+                : order.rawStatus === "PLACED"
                   ? "warning"
                   : "info"
           }
@@ -55,48 +71,59 @@ export default function KitchenOrderCard({
           {order.status}
         </Badge>
       </div>
+
       <OrderTimer order={order} now={now} />
+
       <div className="om-kitchen-customer">
         <strong>{order.customer}</strong>
         <small>
-          {order.items?.length || 0} dish line(s) · {money(order.amount)}
+          {order.itemCount ?? order.items?.length ?? 0} item(s)
+          {" · "}
+          {money(order.amount)}
         </small>
       </div>
+
       <div className="om-kitchen-items">
         {(order.items || []).map((item, index) => (
-          <div key={`${item.name}-${index}`}>
+          <div key={item.id || `${item.name}-${index}`}>
             <span>
-              <b>{item.qty || 1}×</b> {item.name}
+              <b>{item.qty || item.quantity || 1}×</b> {item.name}
             </span>
             <small>
               {item.portion || "Regular"}
-              {item.addons?.length ? ` · ${item.addons.join(", ")}` : ""}
+              {item.addons?.length
+                ? ` · ${item.addons.join(", ")}`
+                : ""}
             </small>
           </div>
         ))}
       </div>
+
       {order.instructions && (
         <div className="om-kitchen-instructions">
           <Flame size={14} />
           <span>{order.instructions}</span>
         </div>
       )}
+
       <div className="om-kitchen-promise">
         <span>Promised {timeOnly(order.promisedAt)}</span>
         <span>Payment: {order.paymentStatus}</span>
       </div>
+
       <div className="om-kitchen-override">
+        Preparation estimate: {order.prepMinutes || "—"} min
         {order.etaOverride
-          ? `Manager ETA · ${order.prepMinutes} min`
-          : order.estimateExplanation?.method === "Workload-based demo estimate"
-            ? `Workload estimate · ${order.prepMinutes || "—"} min · ${order.estimateExplanation.activeOrders} active orders considered`
-            : `Seeded estimate · ${order.prepMinutes || "—"} min`}
+          ? ` · Manager override: ${order.etaOverride.reason}`
+          : ""}
       </div>
-      {order.criticalLateNotifiedAt && (
+
+      {late && (
         <div className="om-kitchen-notified">
-          Critical · Customer notified (demo)
+          Late order · {order.lateMinutes || 0} minutes past promise
         </div>
       )}
+
       <div className="om-kitchen-actions">
         <button
           type="button"
@@ -105,10 +132,13 @@ export default function KitchenOrderCard({
         >
           <Eye size={15} /> Details
         </button>
+
         {action && (
           <button
             type="button"
-            className={`om-button kitchen-action ${action.next === "Handed Off" ? "handoff" : ""}`}
+            className={`om-button kitchen-action ${
+              action.next === "HANDED_OFF" ? "handoff" : ""
+            }`}
             disabled={busy}
             onClick={() => onAction(order, action.next)}
           >

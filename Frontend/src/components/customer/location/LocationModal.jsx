@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { MapPin, X, Check, Store } from "lucide-react";
 
 import { useCustomer } from "../../../context/CustomerContext";
@@ -13,32 +13,24 @@ export default function LocationModal({ open, onClose }) {
     pendingLocation,
   } = useCustomer();
 
-  const [pincode, setPincode] = useState(selectedPincode || "");
+  const [pincode, setPincode] = useState(
+    () => pendingLocation?.pincode || selectedPincode || "",
+  );
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [hasChecked, setHasChecked] = useState(false);
 
-  useEffect(() => {
-    if (!open) return;
+  // useEffect(() => {
+  //   if (!open) return;
 
-    setPincode(
-      pendingLocation?.pincode || selectedPincode || "",
-    );
+  //   setPincode(pendingLocation?.pincode || selectedPincode || "");
 
-    setError("");
+  //   setError("");
 
-    setHasChecked(
-      Boolean(
-        pendingLocation?.outlets?.length ||
-          locationChoices?.length,
-      ),
-    );
-  }, [
-    open,
-    selectedPincode,
-    pendingLocation,
-    locationChoices,
-  ]);
+  //   setHasChecked(
+  //     Boolean(pendingLocation?.outlets?.length || locationChoices?.length),
+  //   );
+  // }, [open, selectedPincode, pendingLocation, locationChoices]);
 
   if (!open) return null;
 
@@ -59,8 +51,7 @@ export default function LocationModal({ open, onClose }) {
 
       if (!result.serviceable) {
         setError(
-          result.reason ||
-            "No active outlet currently serves this pincode.",
+          result.reason || "No active outlet currently serves this pincode.",
         );
         return;
       }
@@ -70,24 +61,18 @@ export default function LocationModal({ open, onClose }) {
        * by CustomerContext. Do not close when the context has
        * requested confirmation to clear an existing cart.
        */
-      if (
-        !result.requiresCartConfirmation &&
-        result.outlets?.length === 1
-      ) {
+      if (!result.requiresCartConfirmation && result.outlets?.length === 1) {
         onClose();
       }
     } catch (err) {
-      setError(
-        err.message || "Could not check this pincode.",
-      );
+      setError(err.message || "Could not check this pincode.");
     } finally {
       setBusy(false);
     }
   };
 
   const choices =
-    pendingLocation?.outlets ||
-    (hasChecked ? locationChoices : []);
+    pendingLocation?.outlets || (hasChecked ? locationChoices : []);
 
   const selectOutlet = async (outletId) => {
     setError("");
@@ -105,9 +90,7 @@ export default function LocationModal({ open, onClose }) {
 
       onClose();
     } catch (err) {
-      setError(
-        err.message || "Could not select this outlet.",
-      );
+      setError(err.message || "Could not select this outlet.");
     } finally {
       setBusy(false);
     }
@@ -116,9 +99,7 @@ export default function LocationModal({ open, onClose }) {
   return (
     <div
       className="cu-overlay"
-      onMouseDown={(event) =>
-        event.target === event.currentTarget && onClose()
-      }
+      onMouseDown={(event) => event.target === event.currentTarget && onClose()}
     >
       <section
         className="cu-modal cu-location-modal"
@@ -141,22 +122,15 @@ export default function LocationModal({ open, onClose }) {
 
         <span className="cu-eyebrow">DELIVERY LOCATION</span>
 
-        <h2 id="cu-location-title">
-          Where should we deliver?
-        </h2>
+        <h2 id="cu-location-title">Where should we deliver?</h2>
 
         <p>
-          Enter your pincode to find an active Dastarkhwan kitchen
-          serving your area.
+          Enter your pincode to find an active Dastarkhwan kitchen serving your
+          area.
         </p>
 
-        <form
-          className="cu-pincode-form"
-          onSubmit={check}
-        >
-          <label htmlFor="cu-pincode">
-            6-digit delivery pincode
-          </label>
+        <form className="cu-pincode-form" onSubmit={check}>
+          <label htmlFor="cu-pincode">6-digit delivery pincode</label>
 
           <div>
             <input
@@ -165,9 +139,7 @@ export default function LocationModal({ open, onClose }) {
               maxLength={6}
               inputMode="numeric"
               onChange={(event) => {
-                setPincode(
-                  event.target.value.replace(/\D/g, ""),
-                );
+                setPincode(event.target.value.replace(/\D/g, ""));
                 setHasChecked(false);
                 setError("");
               }}
@@ -175,19 +147,13 @@ export default function LocationModal({ open, onClose }) {
               autoFocus
             />
 
-            <button
-              className="cu-button"
-              disabled={busy}
-              type="submit"
-            >
+            <button className="cu-button" disabled={busy} type="submit">
               {busy ? "Checking…" : "Check availability"}
             </button>
           </div>
         </form>
 
-        {error && (
-          <p className="cu-form-error">{error}</p>
-        )}
+        {error && <p className="cu-form-error">{error}</p>}
 
         {choices.length > 0 && (
           <div className="cu-outlet-choices">
@@ -202,11 +168,7 @@ export default function LocationModal({ open, onClose }) {
                 key={outlet.id}
                 type="button"
                 disabled={busy}
-                className={
-                  selectedOutletId === outlet.id
-                    ? "is-selected"
-                    : ""
-                }
+                className={selectedOutletId === outlet.id ? "is-selected" : ""}
                 onClick={() => selectOutlet(outlet.id)}
               >
                 <span className="cu-choice-icon">
@@ -224,9 +186,7 @@ export default function LocationModal({ open, onClose }) {
                   </small>
                 </span>
 
-                {selectedOutletId === outlet.id ? (
-                  <Check size={17} />
-                ) : null}
+                {selectedOutletId === outlet.id ? <Check size={17} /> : null}
               </button>
             ))}
           </div>

@@ -1,12 +1,5 @@
 import { useMemo, useState } from "react";
-import {
-  X,
-  Clock3,
-  AlertCircle,
-  Plus,
-  Minus,
-  ShoppingBag,
-} from "lucide-react";
+import { X, Clock3, AlertCircle, Plus, Minus, ShoppingBag } from "lucide-react";
 
 import FoodImage from "../common/FoodImage";
 import { FoodTypeBadge, SpiceBadge } from "../common/Badges";
@@ -15,42 +8,33 @@ import { useCustomer } from "../../../context/CustomerContext";
 import { currency } from "../../../utils/customerPricing";
 
 export default function FoodDetailsModal({ item, onClose }) {
-  const {
-    addToCart,
-    selectedOutletId,
-    notify,
-  } = useCustomer();
+  const { addToCart, selectedOutletId, notify } = useCustomer();
 
-  const [portionId, setPortionId] = useState(
-    item?.portions?.[0]?.id || "",
-  );
+  const [portionId, setPortionId] = useState(item?.portions?.[0]?.id || "");
 
   const [selectedAddons, setSelectedAddons] = useState([]);
   const [quantity, setQuantity] = useState(1);
   const [busy, setBusy] = useState(false);
 
-  if (!item) return null;
-
   const portion =
-    item.portions?.find((entry) => entry.id === portionId) ||
-    item.portions?.[0] ||
+    item?.portions?.find((entry) => entry.id === portionId) ||
+    item?.portions?.[0] ||
     null;
 
-  const addonGroups =
-    item.addonGroups?.length
-      ? item.addonGroups
-      : item.addons?.length
-        ? [
-            {
-              id: "default",
-              name: "Add-ons",
-              isRequired: Boolean(item.addonsRequired),
-              minSelect: item.addonsRequired ? 1 : 0,
-              maxSelect: item.addons.length,
-              options: item.addons,
-            },
-          ]
-        : [];
+  const addonGroups = item?.addonGroups?.length
+    ? item.addonGroups
+    : item?.addons?.length
+      ? [
+          {
+            id: "default",
+            name: "Add-ons",
+            isRequired: Boolean(item.addonsRequired),
+            minSelect: item.addonsRequired ? 1 : 0,
+            maxSelect: item.addons.length,
+            options: item.addons,
+          },
+        ]
+      : [];
 
   const addonsTotal = selectedAddons.reduce(
     (sum, addon) => sum + Number(addon.price || 0),
@@ -62,11 +46,12 @@ export default function FoodDetailsModal({ item, onClose }) {
    * adjustment. Do not add the outlet offset a second time.
    */
   const unitPrice = useMemo(
-    () =>
-      Number(portion?.price ?? item.effectivePrice ?? 0) +
-      addonsTotal,
-    [portion, item.effectivePrice, addonsTotal],
+    () => Number(portion?.price ?? item?.effectivePrice ?? 0) + addonsTotal,
+    [portion, item?.effectivePrice, addonsTotal],
   );
+
+  /* All Hooks must be called before this conditional return. */
+  if (!item) return null;
 
   const requiredGroupsSatisfied = addonGroups.every((group) => {
     const count = selectedAddons.filter(
@@ -78,22 +63,15 @@ export default function FoodDetailsModal({ item, onClose }) {
       group.isRequired ? 1 : 0,
     );
 
-    return (
-      count >= minimum &&
-      count <= Number(group.maxSelect ?? 20)
-    );
+    return count >= minimum && count <= Number(group.maxSelect ?? 20);
   });
 
   const toggleAddon = (group, option) => {
     setSelectedAddons((current) => {
-      const alreadySelected = current.some(
-        (entry) => entry.id === option.id,
-      );
+      const alreadySelected = current.some((entry) => entry.id === option.id);
 
       if (alreadySelected) {
-        return current.filter(
-          (entry) => entry.id !== option.id,
-        );
+        return current.filter((entry) => entry.id !== option.id);
       }
 
       const groupSelections = current.filter(
@@ -103,10 +81,7 @@ export default function FoodDetailsModal({ item, onClose }) {
       const max = Number(group.maxSelect ?? 20);
 
       if (groupSelections >= max) {
-        notify(
-          `Choose at most ${max} options for ${group.name}.`,
-          "error",
-        );
+        notify(`Choose at most ${max} options for ${group.name}.`, "error");
 
         return current;
       }
@@ -163,9 +138,7 @@ export default function FoodDetailsModal({ item, onClose }) {
       if (success) {
         onClose();
 
-        window.dispatchEvent(
-          new Event("dastarkhwan:open-cart"),
-        );
+        window.dispatchEvent(new Event("dastarkhwan:open-cart"));
       }
     } finally {
       setBusy(false);
@@ -175,9 +148,7 @@ export default function FoodDetailsModal({ item, onClose }) {
   return (
     <div
       className="cu-overlay"
-      onMouseDown={(event) =>
-        event.target === event.currentTarget && onClose()
-      }
+      onMouseDown={(event) => event.target === event.currentTarget && onClose()}
     >
       <section
         className="cu-modal cu-food-modal"
@@ -185,21 +156,13 @@ export default function FoodDetailsModal({ item, onClose }) {
         aria-modal="true"
         aria-label={`${item.name} details`}
       >
-        <button
-          className="cu-modal-close"
-          onClick={onClose}
-          aria-label="Close"
-        >
+        <button className="cu-modal-close" onClick={onClose} aria-label="Close">
           <X size={18} />
         </button>
 
         <div className="cu-food-modal-grid">
           <div className="cu-food-modal-photo">
-            <FoodImage
-              src={item.image}
-              alt={item.name}
-              loading="eager"
-            />
+            <FoodImage src={item.image} alt={item.name} loading="eager" />
           </div>
 
           <div className="cu-food-modal-content">
@@ -208,9 +171,7 @@ export default function FoodDetailsModal({ item, onClose }) {
               <SpiceBadge level={item.spice} />
             </div>
 
-            <span className="cu-eyebrow">
-              {item.category}
-            </span>
+            <span className="cu-eyebrow">{item.category}</span>
 
             <h2>{item.name}</h2>
 
@@ -238,16 +199,12 @@ export default function FoodDetailsModal({ item, onClose }) {
                   {item.portions.map((entry) => (
                     <button
                       key={entry.id}
-                      className={
-                        portionId === entry.id ? "is-active" : ""
-                      }
+                      className={portionId === entry.id ? "is-active" : ""}
                       onClick={() => setPortionId(entry.id)}
                     >
                       {entry.name}
 
-                      <small>
-                        {currency(entry.price)}
-                      </small>
+                      <small>{currency(entry.price)}</small>
                     </button>
                   ))}
                 </div>
@@ -255,10 +212,7 @@ export default function FoodDetailsModal({ item, onClose }) {
             )}
 
             {addonGroups.map((group) => (
-              <div
-                className="cu-customise-section"
-                key={group.id}
-              >
+              <div className="cu-customise-section" key={group.id}>
                 <strong>
                   {group.name}{" "}
                   <small>
@@ -284,9 +238,7 @@ export default function FoodDetailsModal({ item, onClose }) {
 
                       <span>{option.name}</span>
 
-                      <small>
-                        +{currency(option.price)}
-                      </small>
+                      <small>+{currency(option.price)}</small>
                     </label>
                   ))}
                 </div>
@@ -298,9 +250,7 @@ export default function FoodDetailsModal({ item, onClose }) {
                 <div className="cu-quantity">
                   <button
                     onClick={() =>
-                      setQuantity((value) =>
-                        Math.max(1, value - 1),
-                      )
+                      setQuantity((value) => Math.max(1, value - 1))
                     }
                     aria-label="Decrease quantity"
                   >
@@ -311,9 +261,7 @@ export default function FoodDetailsModal({ item, onClose }) {
 
                   <button
                     onClick={() =>
-                      setQuantity((value) =>
-                        Math.min(20, value + 1),
-                      )
+                      setQuantity((value) => Math.min(20, value + 1))
                     }
                     aria-label="Increase quantity"
                   >

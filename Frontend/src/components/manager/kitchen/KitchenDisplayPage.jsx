@@ -11,10 +11,10 @@ import {
   VolumeX,
 } from "lucide-react";
 import { Link } from "react-router-dom";
+
 import { useManager } from "../../../context/ManagerContext";
-import { mockOutletManagerApi } from "../../../services/mockOutletManagerApi";
-import { useOrderTimer } from "../../../hooks/useOrderTimer";
-import { timerState } from "../../../hooks/useOrderTimer";
+import managerApi from "../../../services/managerApi";
+import { useOrderTimer, timerState } from "../../../hooks/useOrderTimer";
 import { Badge, Empty, Toast, timeOnly } from "../common/ManagerUI";
 import KitchenOrderCard from "./KitchenOrderCard";
 import ManagerOrderDetailsDrawer from "../orders/ManagerOrderDetailsDrawer";
@@ -22,95 +22,184 @@ import PreparationTimeOverride from "./PreparationTimeOverride";
 
 function playAlert() {
   try {
-    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    const AudioContextClass =
+      window.AudioContext || window.webkitAudioContext;
+
     if (!AudioContextClass) return;
+
     const context = new AudioContextClass();
     const oscillator = context.createOscillator();
     const gain = context.createGain();
+
     oscillator.type = "sine";
     oscillator.frequency.value = 740;
     gain.gain.value = 0.06;
+
     oscillator.connect(gain);
     gain.connect(context.destination);
+
     oscillator.start();
     oscillator.stop(context.currentTime + 0.18);
     oscillator.onended = () => context.close();
   } catch {
-    /* sound is optional; visual alerts remain available */
+    // Audio is optional.
   }
 }
 
 export default function KitchenDisplayPage() {
-  const { outlet, orders, run, refresh } = useManager();
+  const {
+    outlet,
+    kitchenOrders,
+    lateOrders,
+    refreshKitchen,
+    refresh,
+  } = useManager();
+
   const now = useOrderTimer();
+
   const [sound, setSound] = useState(false);
   const [selected, setSelected] = useState(null);
   const [overrideOrder, setOverrideOrder] = useState(null);
   const [busyId, setBusyId] = useState("");
   const [toast, setToast] = useState("");
   const [toastTone, setToastTone] = useState("success");
-  const previousNew = useRef(0);
   const [fullScreen, setFullScreen] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const previousNew = useRef(0);
+
+  const lateIds = useMemo(
+    () => new Set(lateOrders.map((order) => order.orderId)),
+    [lateOrders],
+  );
+
   const paidActive = useMemo(
     () =>
-      orders.filter(
+      kitchenOrders.filter(
         (order) =>
-          order.paymentStatus === "Succeeded" &&
-          ["Placed", "Accepted", "Preparing", "Ready"].includes(order.status),
+          order.rawPaymentStatus === "SUCCEEDED" &&
+          ["PLACED", "ACCEPTED", "PREPARING", "READY"].includes(
+            order.rawStatus,
+          ),
       ),
-    [orders],
+    [kitchenOrders],
   );
+
   const columns = useMemo(
     () => ({
       new: paidActive
-        .filter((order) => order.status === "Placed")
-        .sort((a, b) => new Date(a.placedAt) - new Date(b.placedAt)),
-      preparing: paidActive
-        .filter((order) => ["Accepted", "Preparing"].includes(order.status))
-        .sort((a, b) => new Date(a.promisedAt) - new Date(b.promisedAt)),
-      ready: paidActive
-        .filter((order) => order.status === "Ready")
+        .filter((order) => order.rawStatus === "PLACED")
         .sort(
           (a, b) =>
-            new Date(a.readyAt || a.promisedAt) -
-            new Date(b.readyAt || b.promisedAt),
+            new Date(a.placedAt) - new Date(b.placedAt),
+        ),
+
+      preparing: paidActive
+        .filter((order) =>
+          ["ACCEPTED", "PREPARING"].includes(order.rawStatus),
+        )
+        .sort(
+          (a, b) =>
+            new Date(a.promisedAt) - new Date(b.promisedAt),
+        ),
+
+      ready: paidActive
+        .filter((order) => order.rawStatus === "READY")
+        .sort(
+          (a, b) =>
+            new Date(a.promisedAt) - new Date(b.promisedAt),
         ),
     }),
     [paidActive],
   );
+
   const lateCount = paidActive.filter(
-    (order) =>
-      timerState(order, now).state === "late" ||
-      timerState(order, now).state === "critical",
+    (order) => lateIds.has(order.orderId),
   ).length;
+
   const criticalCount = paidActive.filter(
-    (order) => timerState(order, now).state === "critical",
+    (order) =>
+      lateIds.has(order.orderId) &&
+      timerState(order, now).minutes >= 10,
   ).length;
+
   useEffect(() => {
-    if (sound && columns.new.length > previousNew.current) playAlert();
+    if (sound && columns.new.length > previousNew.current) {
+      playAlert();
+    }
+
     previousNew.current = columns.new.length;
   }, [columns.new.length, sound]);
-  const doAction = async (order, next) => {
-    setBusyId(order.id);
+
+  const doAction = async (order, nextStatus) => {
+    const databaseOrderId = order.orderId;
+
+    if (!databaseOrderId) {
+      setToast("The database order ID is missing. Refresh the kitchen.");
+      setToastTone("error");
+      return;
+    }
+
+    setBusyId(databaseOrderId);
+
     try {
-      await run(() => mockOutletManagerApi.updateOrderStatus(order.id, next));
-      setToast(`${order.id} moved to ${next}.`);
+      await managerApi.updateOrderStatus(
+        databaseOrderId,
+        nextStatus,
+      );
+
+      await refreshKitchen();
+
+      setToast(`${order.id} moved to ${nextStatus}.`);
       setToastTone("success");
     } catch (error) {
-      setToast(error.message);
+      setToast(error.message || "Unable to update order status.");
       setToastTone("error");
     } finally {
       setBusyId("");
     }
   };
+
   const saveOverride = async (payload) => {
-    await run(() =>
-      mockOutletManagerApi.overrideEta(overrideOrder.id, payload),
+    if (!overrideOrder?.orderId) {
+      throw new Error("The database order ID is missing.");
+    }
+
+    const result = await managerApi.overrideEta(
+      overrideOrder.orderId,
+      payload,
     );
-    setToast(`Preparation estimate updated for ${overrideOrder.id}.`);
+
+    await refreshKitchen();
+
+    // Re-fetch the order detail to show the server-authoritative ETA.
+    const updated = await managerApi.getOrderDetails(
+      overrideOrder.orderId,
+    );
+
+    setSelected(updated);
+    setToast("Preparation estimate updated.");
     setToastTone("success");
     setOverrideOrder(null);
+
+    return result;
   };
+
+  const refreshData = async () => {
+    setRefreshing(true);
+
+    try {
+      await refresh();
+      setToast("Kitchen data refreshed.");
+      setToastTone("success");
+    } catch (error) {
+      setToast(error.message || "Unable to refresh kitchen data.");
+      setToastTone("error");
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
   const toggleFullscreen = async () => {
     try {
       if (!document.fullscreenElement) {
@@ -125,11 +214,19 @@ export default function KitchenDisplayPage() {
       setToastTone("error");
     }
   };
+
   useEffect(() => {
-    const handler = () => setFullScreen(Boolean(document.fullscreenElement));
+    const handler = () => {
+      setFullScreen(Boolean(document.fullscreenElement));
+    };
+
     document.addEventListener("fullscreenchange", handler);
-    return () => document.removeEventListener("fullscreenchange", handler);
+
+    return () => {
+      document.removeEventListener("fullscreenchange", handler);
+    };
   }, []);
+
   return (
     <div className="om-kds-page">
       <header className="om-kds-header">
@@ -139,13 +236,15 @@ export default function KitchenDisplayPage() {
           </span>
           <div>
             <strong>Dastarkhwan</strong>
-            <small>{outlet.name} · Kitchen Display</small>
+            <small>{outlet?.name} · Kitchen Display</small>
           </div>
         </div>
+
         <div className="om-kds-live">
           <i />
-          Demo mode · Updates simulated locally
+          Backend connected · Live refresh on demand
         </div>
+
         <div className="om-kds-header-right">
           <span>
             <Clock3 size={16} />
@@ -156,9 +255,11 @@ export default function KitchenDisplayPage() {
               second: "2-digit",
             })}
           </span>
-          <Badge tone={outlet.active ? "success" : "danger"}>
-            {outlet.active ? "Outlet open" : "Outlet inactive"}
+
+          <Badge tone={outlet?.active ? "success" : "danger"}>
+            {outlet?.active ? "Outlet open" : "Outlet inactive"}
           </Badge>
+
           <button
             type="button"
             className="om-kds-icon"
@@ -167,40 +268,53 @@ export default function KitchenDisplayPage() {
           >
             {sound ? <Volume2 /> : <VolumeX />}
           </button>
+
           <button
             type="button"
             className="om-kds-icon"
             onClick={toggleFullscreen}
-            title="Toggle full screen"
+            title={fullScreen ? "Exit full screen" : "Toggle full screen"}
           >
             <Maximize2 />
           </button>
+
           <Link to="/manager" className="om-kds-back">
             <ArrowLeft size={15} /> Dashboard
           </Link>
         </div>
       </header>
+
       <div className="om-kds-statusbar">
         <div>
           <strong>{paidActive.length}</strong>
-          <span>Active orders</span>
+          <span>Active paid orders</span>
         </div>
+
         <div>
           <strong>{columns.new.length}</strong>
           <span>New orders</span>
         </div>
+
         <div className={lateCount ? "late" : ""}>
           <strong>{lateCount}</strong>
           <span>Late orders</span>
         </div>
+
         <div className={criticalCount ? "critical" : ""}>
           <strong>{criticalCount}</strong>
-          <span>10+ min critical</span>
+          <span>10+ min late</span>
         </div>
-        <button type="button" onClick={refresh}>
-          <RefreshCw size={15} /> Refresh data
+
+        <button
+          type="button"
+          onClick={refreshData}
+          disabled={refreshing}
+        >
+          <RefreshCw size={15} />
+          {refreshing ? "Refreshing…" : "Refresh data"}
         </button>
       </div>
+
       {criticalCount > 0 && (
         <div className="om-kds-critical-banner">
           <Bell size={18} />
@@ -210,12 +324,13 @@ export default function KitchenDisplayPage() {
               {criticalCount === 1 ? "" : "s"}
             </strong>
             <span>
-              At least 10 minutes past the promised time. Customer notification
-              is recorded in demo order history.
+              These paid orders are at least 10 minutes past their
+              promised completion time.
             </span>
           </div>
         </div>
       )}
+
       <div className="om-kds-columns">
         {[
           {
@@ -241,6 +356,7 @@ export default function KitchenDisplayPage() {
           },
         ].map((column) => {
           const Icon = column.icon;
+
           return (
             <section
               className={`om-kds-column ${column.tone}`}
@@ -256,16 +372,21 @@ export default function KitchenDisplayPage() {
                     <small>{column.subtitle}</small>
                   </div>
                 </div>
+
                 <b>{columns[column.key].length}</b>
               </header>
+
               <div className="om-kds-column-body">
                 {columns[column.key].length ? (
                   columns[column.key].map((order) => (
                     <KitchenOrderCard
-                      key={order.id}
-                      order={order}
+                      key={order.orderId}
+                      order={{
+                        ...order,
+                        isLate: lateIds.has(order.orderId),
+                      }}
                       now={now}
-                      busy={busyId === order.id}
+                      busy={busyId === order.orderId}
                       onView={setSelected}
                       onAction={doAction}
                     />
@@ -273,7 +394,7 @@ export default function KitchenDisplayPage() {
                 ) : (
                   <Empty
                     title="Nothing in this queue"
-                    detail="New activity will appear here automatically."
+                    detail="New paid orders will appear here after refreshing."
                   />
                 )}
               </div>
@@ -281,18 +402,25 @@ export default function KitchenDisplayPage() {
           );
         })}
       </div>
+
       <ManagerOrderDetailsDrawer
         order={selected}
         onClose={() => setSelected(null)}
         onOverride={setOverrideOrder}
       />
+
       <PreparationTimeOverride
         order={overrideOrder}
-        minimum={Number(outlet.prepTime || 15)}
+        minimum={Number(outlet?.prepTime || 15)}
         onClose={() => setOverrideOrder(null)}
         onSave={saveOverride}
       />
-      <Toast message={toast} tone={toastTone} onClose={() => setToast("")} />
+
+      <Toast
+        message={toast}
+        tone={toastTone}
+        onClose={() => setToast("")}
+      />
     </div>
   );
 }
