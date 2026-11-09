@@ -11,7 +11,7 @@ import {
   VolumeX,
 } from "lucide-react";
 import { Link } from "react-router-dom";
-
+import socketClient from "../../../services/socketClient.js";
 import { useManager } from "../../../context/ManagerContext";
 import managerApi from "../../../services/managerApi";
 import { useOrderTimer, timerState } from "../../../hooks/useOrderTimer";
@@ -148,7 +148,9 @@ export default function KitchenDisplayPage() {
         nextStatus,
       );
 
-      await refreshKitchen();
+      if (!socketClient.connected) {
+  await refreshKitchen();
+}
 
       setToast(`${order.id} moved to ${nextStatus}.`);
       setToastTone("success");

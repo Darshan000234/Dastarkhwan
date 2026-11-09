@@ -133,6 +133,7 @@ export const listMyOrders = asyncHandler(async (req, res) => {
             },
           },
         },
+        address: true,
         items: {
           include: {
             addons: true,

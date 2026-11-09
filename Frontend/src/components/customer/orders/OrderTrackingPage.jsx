@@ -56,38 +56,67 @@ export default function OrderTrackingPage() {
   const loading = loadedOrderId !== orderId;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [errorStatus, setErrorStatus] = useState(0);
 
   const load = useCallback(async () => {
     try {
-      const [orderResult, trackingResult, timelineResult] = await Promise.all([
-        customerApi.getOrder(orderId),
-        customerApi.getOrderTracking(orderId),
-        customerApi.getOrderTimeline(orderId),
-      ]);
+      const orderResult = await customerApi.getOrder(orderId);
 
       if (!orderResult) {
-        throw new Error("The backend did not return this order.");
+        const error = new Error("Order not found.");
+        error.status = 404;
+        throw error;
       }
 
+      const now = Date.now();
+
+      const promisedAt = orderResult.promisedAt
+        ? new Date(orderResult.promisedAt).getTime()
+        : null;
+
+      const isTerminal = ["Handed Off", "Cancelled"].includes(
+        orderResult.status,
+      );
+
+      const delayMinutes =
+        !isTerminal && promisedAt && now > promisedAt
+          ? Math.floor((now - promisedAt) / 60000)
+          : 0;
+
+      const remainingMinutes =
+        !isTerminal && promisedAt
+          ? Math.max(0, Math.ceil((promisedAt - now) / 60000))
+          : 0;
+
       setOrder(orderResult);
-      setTracking(trackingResult);
 
-      const mappedTimeline = (timelineResult.timeline || [])
-        .filter((event) => event.toStatus || event.description)
-        .map((event) => ({
-          label: event.toStatus || event.description,
-          time: event.timestamp,
-          at: event.timestamp,
-          note: event.description,
-        }));
+      setTracking({
+        orderId: orderResult.id,
+        status: orderResult.status,
+        promisedAt: orderResult.promisedAt,
+        estimatedPrepMinutes: orderResult.prepMinutes,
+        remainingMinutes,
+        delayMinutes,
+        isLate: delayMinutes > 0,
+        outlet: orderResult.outletSnapshot,
+      });
 
-      setTimeline(mappedTimeline);
+      setTimeline(
+        (orderResult.timeline || []).map((event) => ({
+          label: event.label,
+          time: event.time,
+          at: event.at,
+          note: event.note,
+        })),
+      );
+
       setError("");
     } catch (err) {
-      setError(err.message || "Unable to load this order.");
-      setOrder(null);
-      setTracking(null);
-      setTimeline([]);
+      setError(err.message || "Unable to refresh your order.");
+
+      // Do not erase a previously loaded order when a
+      // temporary database or network failure occurs.
+      console.error("Customer order refresh failed:", err);
     } finally {
       setBusy(false);
       setLoadedOrderId(orderId);
@@ -104,11 +133,22 @@ export default function OrderTrackingPage() {
 
     const socket = socketClient.connect();
 
+    const LIVE_STATUS_LABELS = {
+      PLACED: "Placed",
+      ACCEPTED: "Accepted",
+      PREPARING: "Preparing",
+      READY: "Ready",
+      HANDED_OFF: "Handed Off",
+      CANCELLED: "Cancelled",
+    };
+
     const refreshIfCurrentOrder = (payload) => {
       if (!active) return;
 
       const currentOrderKey = String(orderId);
 
+      // URL uses the public WEB order number.
+      // Backend event includes both public and database IDs.
       const matchesCurrentOrder = [payload?.orderId, payload?.orderNumber].some(
         (eventOrderId) =>
           eventOrderId !== undefined &&
@@ -118,23 +158,89 @@ export default function OrderTrackingPage() {
 
       if (!matchesCurrentOrder) return;
 
-      // Fetch authoritative order, tracking and timeline data.
-      load();
+      console.info(
+        "[Customer Tracking] Received order status:",
+        payload.status,
+        payload.orderNumber,
+      );
+
+      const nextStatus = LIVE_STATUS_LABELS[payload.status] || payload.status;
+
+      const eventTime = payload.updatedAt || new Date().toISOString();
+
+      // 1. Update the customer order immediately.
+      // The event is emitted only after the backend transaction succeeds.
+      setOrder((current) =>
+        current
+          ? {
+              ...current,
+              status: nextStatus,
+            }
+          : current,
+      );
+
+      setTracking((current) => ({
+        ...(current || {}),
+        orderId: payload.orderNumber || currentOrderKey,
+        status: nextStatus,
+      }));
+
+      // 2. Add the new status to the timeline immediately.
+      setTimeline((current) => {
+        const alreadyExists = current.some(
+          (event) => event.label === nextStatus && event.at === eventTime,
+        );
+
+        if (alreadyExists) return current;
+
+        return [
+          ...current,
+          {
+            label: nextStatus,
+            time: eventTime,
+            at: eventTime,
+            note: "Live update from the kitchen.",
+          },
+        ];
+      });
+
+      // 3. Reconcile the complete order details with the backend.
+      // If the database is temporarily unavailable, the status
+      // already received through Socket.IO remains visible.
+      void load();
     };
 
     const onConnect = () => {
-      if (!active) return;
+  if (!active) return;
 
-      if (reconnecting) {
-        load();
-      }
+  console.info(
+    "[Customer Tracking] Socket connected:",
+    socket.id
+  );
 
-      reconnecting = true;
-    };
+  // Run after both the initial connection and reconnect.
+  // This retrieves any status that may have changed
+  // before the customer joined the socket room.
+  void load();
 
-    const onDisconnect = () => {
-      reconnecting = true;
-    };
+  reconnecting = true;
+};
+
+const onDisconnect = (reason) => {
+  reconnecting = true;
+
+  console.warn(
+    "[Customer Tracking] Socket disconnected:",
+    reason
+  );
+};
+
+const onConnectError = (error) => {
+  console.error(
+    "[Customer Tracking] Socket connection failed:",
+    error.message
+  );
+};
 
     socket.on("order:status-updated", refreshIfCurrentOrder);
 
@@ -142,10 +248,10 @@ export default function OrderTrackingPage() {
 
     socket.on("connect", onConnect);
     socket.on("disconnect", onDisconnect);
-
+    socket.on("connect_error", onConnectError);
     return () => {
       active = false;
-
+      socket.off("connect_error", onConnectError);
       socket.off("order:status-updated", refreshIfCurrentOrder);
 
       socket.off("order:eta-updated", refreshIfCurrentOrder);
@@ -174,10 +280,15 @@ export default function OrderTrackingPage() {
     return (
       <div className="cu-page">
         <EmptyState
-          title="We couldn't find this order"
+          title={
+            errorStatus === 404
+              ? "We couldn't find this order"
+              : "We couldn't load your order"
+          }
           description={
-            error ||
-            "The order may not exist or may belong to another customer account."
+            errorStatus === 404
+              ? "This order does not exist or does not belong to your account."
+              : "The order service is temporarily unavailable. Your order has not been deleted. Please try again."
           }
           action="Back to menu"
           onAction={() => {

@@ -965,13 +965,13 @@ export function CustomerProvider({ children }) {
     const onOrderStatusUpdated = () => {
       if (!active) return;
 
-      refreshOrders();
+      refreshCustomerOrders();
     };
 
     const onOrderEtaUpdated = () => {
       if (!active) return;
 
-      refreshOrders();
+      refreshCustomerOrders();
     };
 
     const onConnect = () => {

@@ -328,10 +328,20 @@ export function ManagerProvider({ children }) {
     };
 
     const onOrderStatusUpdated = () => {
-      if (!active) return;
+  if (!active) return;
 
-      refreshKitchenAndOrders();
-    };
+  Promise.all([
+    refreshKitchen(),
+    refreshOrders(),
+  ]).catch((error) => {
+    if (active) {
+      console.error(
+        "Unable to refresh manager data after order status update:",
+        error
+      );
+    }
+  });
+};
 
     const onOrderEtaUpdated = () => {
       if (!active) return;
