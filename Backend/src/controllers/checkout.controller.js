@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-
+import { emitOrderCreated } from "../services/realtime.js";
 import prisma from "../db/prisma.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 
@@ -828,6 +828,51 @@ export const confirmMockPayment = asyncHandler(async (req, res) => {
       isolationLevel: "Serializable",
     },
   );
+
+    if (
+    result.status === "SUCCEEDED" &&
+    result.orderStatus === "PLACED" &&
+    result.paymentStatus === "SUCCEEDED"
+  ) {
+    try {
+      const order = await prisma.order.findFirst({
+        where: {
+          orderNumber: result.orderId,
+          customerId: req.user.id,
+          paymentStatus: "SUCCEEDED",
+          status: "PLACED",
+        },
+        select: {
+          id: true,
+          orderNumber: true,
+          outletId: true,
+          status: true,
+          placedAt: true,
+          promisedAt: true,
+          estimatedPrepMinutes: true,
+        },
+      });
+
+      if (order) {
+        emitOrderCreated({
+          outletId: order.outletId,
+          orderId: order.id,
+          orderNumber: order.orderNumber,
+          status: order.status,
+          placedAt: order.placedAt?.toISOString() || null,
+          promisedAt: order.promisedAt?.toISOString() || null,
+          estimatedPrepMinutes: order.estimatedPrepMinutes,
+        });
+      }
+    } catch (error) {
+      // A real-time notification failure must not turn a
+      // successfully paid order into an HTTP failure.
+      console.error(
+        "Failed to emit order:created:",
+        error.message,
+      );
+    }
+  }
 
   return success(res, result, 200, "Mock payment confirmation processed.");
 });

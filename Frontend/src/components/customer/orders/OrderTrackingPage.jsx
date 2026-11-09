@@ -15,6 +15,7 @@ import { currency } from "../../../utils/customerPricing";
 import { OrderStatusBadge } from "../common/Badges";
 import OrderTimeline from "./OrderTimeline";
 import EmptyState from "../common/EmptyState";
+import socketClient from "../../../services/socketClient.js";
 
 function formatDate(value) {
   if (!value) return "—";
@@ -96,6 +97,55 @@ export default function OrderTrackingPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    let active = true;
+    let reconnecting = false;
+
+    const socket = socketClient.connect();
+
+    const refreshIfCurrentOrder = (payload) => {
+      if (!active) return;
+
+      if (payload?.orderId !== orderId) return;
+
+      load();
+    };
+
+    const onConnect = () => {
+      if (!active) return;
+
+      if (reconnecting) {
+        load();
+      }
+
+      reconnecting = true;
+    };
+
+    const onDisconnect = () => {
+      reconnecting = true;
+    };
+
+    socket.on("order:status-updated", refreshIfCurrentOrder);
+
+    socket.on("order:eta-updated", refreshIfCurrentOrder);
+
+    socket.on("connect", onConnect);
+    socket.on("disconnect", onDisconnect);
+
+    return () => {
+      active = false;
+
+      socket.off("order:status-updated", refreshIfCurrentOrder);
+
+      socket.off("order:eta-updated", refreshIfCurrentOrder);
+
+      socket.off("connect", onConnect);
+      socket.off("disconnect", onDisconnect);
+
+      socketClient.disconnect();
+    };
+  }, [orderId, load]);
 
   const refresh = async () => {
     setBusy(true);

@@ -6,6 +6,12 @@ import {
   assertAllowedKeys,
   validateId,
 } from "../utils/customerDomain.js";
+import { emitOrderStatusUpdated } from "../services/realtime.js";
+import {
+  emitOrderStatusUpdated,
+  emitOrderEtaUpdated,
+  emitMenuAvailabilityUpdated,
+} from "../services/realtime.js";
 
 /* =========================================================
    CONSTANTS
@@ -32,22 +38,11 @@ const PAYMENT_STATUSES = [
   "REFUNDED",
 ];
 
-const PAYMENT_METHODS = [
-  "UPI",
-  "CARD",
-  "CASH",
-  "WALLET",
-  "OTHER",
-];
+const PAYMENT_METHODS = ["UPI", "CARD", "CASH", "WALLET", "OTHER"];
 
 const FULFILLMENT_TYPES = ["DELIVERY", "PICKUP"];
 
-const ACTIVE_ORDER_STATUSES = [
-  "PLACED",
-  "ACCEPTED",
-  "PREPARING",
-  "READY",
-];
+const ACTIVE_ORDER_STATUSES = ["PLACED", "ACCEPTED", "PREPARING", "READY"];
 
 const STATUS_LABELS = {
   PLACED: "Placed",
@@ -309,13 +304,9 @@ function assertQueryKeys(query, allowedKeys) {
 }
 
 function parsePagination(query = {}, defaultLimit = 20) {
-  const page =
-    query.page === undefined ? 1 : Number(query.page);
+  const page = query.page === undefined ? 1 : Number(query.page);
 
-  const limit =
-    query.limit === undefined
-      ? defaultLimit
-      : Number(query.limit);
+  const limit = query.limit === undefined ? defaultLimit : Number(query.limit);
 
   if (
     !Number.isSafeInteger(page) ||
@@ -369,11 +360,7 @@ function optionalText(value, field, maxLength = 250) {
 function positiveInteger(value, field, min, max) {
   const number = Number(value);
 
-  if (
-    !Number.isSafeInteger(number) ||
-    number < min ||
-    number > max
-  ) {
+  if (!Number.isSafeInteger(number) || number < min || number > max) {
     throw new HttpError(
       `${field} must be a whole number between ${min} and ${max}.`,
       400,
@@ -402,10 +389,7 @@ function parseBooleanQuery(value, field) {
   if (value === "true") return true;
   if (value === "false") return false;
 
-  throw new HttpError(
-    `${field} must be either true or false.`,
-    400,
-  );
+  throw new HttpError(`${field} must be either true or false.`, 400);
 }
 
 function normalizeEnum(value, allowed, field, aliases = {}) {
@@ -445,12 +429,7 @@ function normalizeOrderStatus(value) {
     cancelled: "CANCELLED",
   };
 
-  return normalizeEnum(
-    value,
-    ORDER_STATUSES,
-    "order status",
-    aliases,
-  );
+  return normalizeEnum(value, ORDER_STATUSES, "order status", aliases);
 }
 
 function normalizePaymentStatus(value) {
@@ -463,12 +442,7 @@ function normalizePaymentStatus(value) {
     refunded: "REFUNDED",
   };
 
-  return normalizeEnum(
-    value,
-    PAYMENT_STATUSES,
-    "payment status",
-    aliases,
-  );
+  return normalizeEnum(value, PAYMENT_STATUSES, "payment status", aliases);
 }
 
 function normalizePaymentMethod(value) {
@@ -480,12 +454,7 @@ function normalizePaymentMethod(value) {
     other: "OTHER",
   };
 
-  return normalizeEnum(
-    value,
-    PAYMENT_METHODS,
-    "payment method",
-    aliases,
-  );
+  return normalizeEnum(value, PAYMENT_METHODS, "payment method", aliases);
 }
 
 function normalizeFulfillmentType(value) {
@@ -494,19 +463,11 @@ function normalizeFulfillmentType(value) {
     pickup: "PICKUP",
   };
 
-  return normalizeEnum(
-    value,
-    FULFILLMENT_TYPES,
-    "fulfillment type",
-    aliases,
-  );
+  return normalizeEnum(value, FULFILLMENT_TYPES, "fulfillment type", aliases);
 }
 
 function requireManagerOutletId(req) {
-  if (
-    typeof req.managerOutletId !== "string" ||
-    !req.managerOutletId.trim()
-  ) {
+  if (typeof req.managerOutletId !== "string" || !req.managerOutletId.trim()) {
     throw new HttpError(
       "No assigned outlet is available for this manager.",
       403,
@@ -518,10 +479,7 @@ function requireManagerOutletId(req) {
 }
 
 function requireManagerId(req) {
-  if (
-    typeof req.user?.id !== "string" ||
-    !req.user.id.trim()
-  ) {
+  if (typeof req.user?.id !== "string" || !req.user.id.trim()) {
     throw new HttpError(
       "Manager authentication is required.",
       401,
@@ -544,9 +502,7 @@ function istDateParts(date = new Date()) {
     day: "2-digit",
   }).formatToParts(date);
 
-  return Object.fromEntries(
-    parts.map((part) => [part.type, part.value]),
-  );
+  return Object.fromEntries(parts.map((part) => [part.type, part.value]));
 }
 
 function getIstStartOfToday(now = new Date()) {
@@ -558,9 +514,7 @@ function getIstStartOfToday(now = new Date()) {
 
 function parseDateOnly(value, field, endOfDay = false) {
   const match =
-    typeof value === "string"
-      ? /^(\d{4})-(\d{2})-(\d{2})$/.exec(value)
-      : null;
+    typeof value === "string" ? /^(\d{4})-(\d{2})-(\d{2})$/.exec(value) : null;
 
   if (!match) {
     throw new HttpError(
@@ -574,9 +528,7 @@ function parseDateOnly(value, field, endOfDay = false) {
   const month = Number(match[2]);
   const day = Number(match[3]);
 
-  const calendarDate = new Date(
-    Date.UTC(year, month - 1, day),
-  );
+  const calendarDate = new Date(Date.UTC(year, month - 1, day));
 
   if (
     calendarDate.getUTCFullYear() !== year ||
@@ -590,13 +542,9 @@ function parseDateOnly(value, field, endOfDay = false) {
     );
   }
 
-  const start = new Date(
-    `${value}T00:00:00.000+05:30`,
-  );
+  const start = new Date(`${value}T00:00:00.000+05:30`);
 
-  return endOfDay
-    ? new Date(start.getTime() + DAY_MS - 1)
-    : start;
+  return endOfDay ? new Date(start.getTime() + DAY_MS - 1) : start;
 }
 
 /*
@@ -610,10 +558,7 @@ function resolveDateRange(
 ) {
   const now = new Date();
 
-  if (
-    query.from !== undefined ||
-    query.to !== undefined
-  ) {
+  if (query.from !== undefined || query.to !== undefined) {
     if (!query.from || !query.to) {
       throw new HttpError(
         "Both from and to dates are required for a custom range.",
@@ -626,30 +571,20 @@ function resolveDateRange(
     const to = parseDateOnly(query.to, "To date", true);
 
     if (from > to) {
-      throw new HttpError(
-        "The from date must not be after the to date.",
-        400,
-      );
+      throw new HttpError("The from date must not be after the to date.", 400);
     }
 
     if (from > now) {
-      throw new HttpError(
-        "The from date cannot be in the future.",
-        400,
-      );
+      throw new HttpError("The from date cannot be in the future.", 400);
     }
 
     const todayStart = getIstStartOfToday(now);
 
     if (to > todayStart.getTime() + DAY_MS - 1) {
-      throw new HttpError(
-        "The to date cannot be in the future.",
-        400,
-      );
+      throw new HttpError("The to date cannot be in the future.", 400);
     }
 
-    const calendarDays =
-      Math.floor((to - from) / DAY_MS) + 1;
+    const calendarDays = Math.floor((to - from) / DAY_MS) + 1;
 
     if (calendarDays > 90) {
       throw new HttpError(
@@ -678,10 +613,7 @@ function resolveDateRange(
     const selected = String(query.range).trim().toLowerCase();
 
     if (!Object.hasOwn(ranges, selected)) {
-      throw new HttpError(
-        "Range must be today, 7d, or 30d.",
-        400,
-      );
+      throw new HttpError("Range must be today, 7d, or 30d.", 400);
     }
 
     days = ranges[selected];
@@ -721,13 +653,14 @@ function formatIstTime(value) {
 }
 
 function formatTrendLabel(dateString) {
-  return new Date(
-    `${dateString}T12:00:00.000+05:30`,
-  ).toLocaleDateString("en-IN", {
-    timeZone: TIME_ZONE,
-    day: "2-digit",
-    month: "short",
-  });
+  return new Date(`${dateString}T12:00:00.000+05:30`).toLocaleDateString(
+    "en-IN",
+    {
+      timeZone: TIME_ZONE,
+      day: "2-digit",
+      month: "short",
+    },
+  );
 }
 
 /*
@@ -739,10 +672,7 @@ function parseRestockDate(value) {
   if (value === null || value === "") return null;
 
   if (typeof value !== "string") {
-    throw new HttpError(
-      "Expected restock time must be a valid date.",
-      400,
-    );
+    throw new HttpError("Expected restock time must be a valid date.", 400);
   }
 
   const clean = value.trim();
@@ -750,9 +680,7 @@ function parseRestockDate(value) {
   const hasTimezone = /(?:Z|[+-]\d{2}:\d{2})$/i.test(clean);
 
   const localDateTime =
-    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?$/.test(
-      clean,
-    );
+    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?$/.test(clean);
 
   if (!hasTimezone && !localDateTime) {
     throw new HttpError(
@@ -761,15 +689,10 @@ function parseRestockDate(value) {
     );
   }
 
-  const parsed = new Date(
-    hasTimezone ? clean : `${clean}+05:30`,
-  );
+  const parsed = new Date(hasTimezone ? clean : `${clean}+05:30`);
 
   if (Number.isNaN(parsed.getTime())) {
-    throw new HttpError(
-      "Expected restock time is invalid.",
-      400,
-    );
+    throw new HttpError("Expected restock time is invalid.", 400);
   }
 
   return parsed;
@@ -950,7 +873,10 @@ function mapManagerOrder(order, now = new Date()) {
       quantity,
       portion: item.portionName || "Regular",
       portionName: item.portionName,
-      price: quantity > 0 ? roundMoney(lineTotal / quantity) : toNumber(item.unitPrice),
+      price:
+        quantity > 0
+          ? roundMoney(lineTotal / quantity)
+          : toNumber(item.unitPrice),
       unitPrice: toNumber(item.unitPrice),
       lineTotal,
       preparationNote: item.preparationNote,
@@ -969,12 +895,12 @@ function mapManagerOrder(order, now = new Date()) {
       : 0;
 
   const remainingMinutes =
-    order.promisedAt && order.status !== "HANDED_OFF" && order.status !== "CANCELLED"
+    order.promisedAt &&
+    order.status !== "HANDED_OFF" &&
+    order.status !== "CANCELLED"
       ? Math.max(
           0,
-          Math.ceil(
-            (order.promisedAt.getTime() - now.getTime()) / MINUTE_MS,
-          ),
+          Math.ceil((order.promisedAt.getTime() - now.getTime()) / MINUTE_MS),
         )
       : 0;
 
@@ -992,8 +918,7 @@ function mapManagerOrder(order, now = new Date()) {
   const customerNotifications = (order.notifications || [])
     .filter(
       (notification) =>
-        order.customerId &&
-        notification.userId === order.customerId,
+        order.customerId && notification.userId === order.customerId,
     )
     .map((notification) => ({
       id: notification.id,
@@ -1025,8 +950,7 @@ function mapManagerOrder(order, now = new Date()) {
       order.fulfillmentType === "PICKUP" ? "Pickup" : "Delivery",
 
     paymentStatus:
-      PAYMENT_STATUS_LABELS[order.paymentStatus] ||
-      order.paymentStatus,
+      PAYMENT_STATUS_LABELS[order.paymentStatus] || order.paymentStatus,
     rawPaymentStatus: order.paymentStatus,
     paymentMethod:
       PAYMENT_METHOD_LABELS[order.paymentMethod] ||
@@ -1057,10 +981,7 @@ function mapManagerOrder(order, now = new Date()) {
     instructions: order.specialInstructions,
     specialInstructions: order.specialInstructions,
 
-    itemCount: items.reduce(
-      (sum, item) => sum + item.quantity,
-      0,
-    ),
+    itemCount: items.reduce((sum, item) => sum + item.quantity, 0),
     itemLineCount: items.length,
     itemSummary: items
       .map((item) => `${item.name} ×${item.quantity}`)
@@ -1139,8 +1060,7 @@ function mapOrderListItem(order) {
     status: STATUS_LABELS[order.status] || order.status,
     rawStatus: order.status,
     paymentStatus:
-      PAYMENT_STATUS_LABELS[order.paymentStatus] ||
-      order.paymentStatus,
+      PAYMENT_STATUS_LABELS[order.paymentStatus] || order.paymentStatus,
     rawPaymentStatus: order.paymentStatus,
     paymentMethod:
       PAYMENT_METHOD_LABELS[order.paymentMethod] ||
@@ -1200,9 +1120,7 @@ function mapMenuMapping(mapping) {
     },
 
     available: Boolean(
-      mapping.isAvailable &&
-      mapping.stockQuantity > 0 &&
-      item.isActive,
+      mapping.isAvailable && mapping.stockQuantity > 0 && item.isActive,
     ),
   };
 }
@@ -1237,10 +1155,7 @@ async function findManagerOrder(
   return db.order.findFirst({
     where: {
       outletId,
-      OR: [
-        { id: orderIdentifier },
-        { orderNumber: orderIdentifier },
-      ],
+      OR: [{ id: orderIdentifier }, { orderNumber: orderIdentifier }],
     },
     include,
   });
@@ -1267,29 +1182,18 @@ function statusNotification(order, nextStatus, now) {
   };
 }
 
-function lateNotificationRows(
-  order,
-  managerId,
-  outletName,
-  now,
-) {
-  if (
-    !order.promisedAt ||
-    !ACTIVE_ORDER_STATUSES.includes(order.status)
-  ) {
+function lateNotificationRows(order, managerId, outletName, now) {
+  if (!order.promisedAt || !ACTIVE_ORDER_STATUSES.includes(order.status)) {
     return [];
   }
 
-  const lateMilliseconds =
-    now.getTime() - order.promisedAt.getTime();
+  const lateMilliseconds = now.getTime() - order.promisedAt.getTime();
 
   if (lateMilliseconds < 10 * MINUTE_MS) {
     return [];
   }
 
-  const lateMinutes = Math.floor(
-    lateMilliseconds / MINUTE_MS,
-  );
+  const lateMinutes = Math.floor(lateMilliseconds / MINUTE_MS);
 
   const promiseVersion = order.promisedAt.getTime();
 
@@ -1306,8 +1210,7 @@ function lateNotificationRows(
       orderId: order.id,
       channel: "IN_APP",
       status: "RECORDED",
-      eventKey:
-        `order:${order.id}:late10:${promiseVersion}:manager`,
+      eventKey: `order:${order.id}:late10:${promiseVersion}:manager`,
       title,
       body,
       metadata: {
@@ -1326,8 +1229,7 @@ function lateNotificationRows(
       orderId: order.id,
       channel: "IN_APP",
       status: "RECORDED",
-      eventKey:
-        `order:${order.id}:late10:${promiseVersion}:customer`,
+      eventKey: `order:${order.id}:late10:${promiseVersion}:customer`,
       title: `Delay update for order ${order.orderNumber}`,
       body:
         `Your order is taking longer than expected. ` +
@@ -1376,8 +1278,7 @@ async function writeManagerAudit(
       entityId,
       details,
       ipAddress: req.ip || null,
-      userAgent:
-        req.get("user-agent")?.slice(0, 300) || null,
+      userAgent: req.get("user-agent")?.slice(0, 300) || null,
     },
   });
 }
@@ -1498,10 +1399,7 @@ export const getWorkspace = managerController(async (req, res) => {
   }
 
   const statusCounts = new Map(
-    statusRows.map((row) => [
-      row.status,
-      row._count._all,
-    ]),
+    statusRows.map((row) => [row.status, row._count._all]),
   );
 
   const newOrders = statusCounts.get("PLACED") || 0;
@@ -1530,10 +1428,7 @@ export const getWorkspace = managerController(async (req, res) => {
       menu: {
         totalItems: totalMenuItems,
         availableItems: availableMenuItems,
-        unavailableItems: Math.max(
-          0,
-          totalMenuItems - availableMenuItems,
-        ),
+        unavailableItems: Math.max(0, totalMenuItems - availableMenuItems),
       },
 
       serverTime: now.toISOString(),
@@ -1729,15 +1624,10 @@ export const getOverview = managerController(async (req, res) => {
   ]);
 
   const counts = new Map(
-    statusRows.map((row) => [
-      row.status,
-      row._count._all,
-    ]),
+    statusRows.map((row) => [row.status, row._count._all]),
   );
 
-  const totalRevenue = roundMoney(
-    revenueAggregate._sum.totalAmount || 0,
-  );
+  const totalRevenue = roundMoney(revenueAggregate._sum.totalAmount || 0);
 
   const averageOrderValue = paidOrderCount
     ? roundMoney(totalRevenue / paidOrderCount)
@@ -1751,9 +1641,7 @@ export const getOverview = managerController(async (req, res) => {
   const averagePromisedPreparationMinutes =
     promisedPreparationAggregate._avg.estimatedPrepMinutes == null
       ? null
-      : Math.round(
-          promisedPreparationAggregate._avg.estimatedPrepMinutes,
-        );
+      : Math.round(promisedPreparationAggregate._avg.estimatedPrepMinutes);
 
   const completion = completionRows[0] || {
     onTimeMeasured: 0,
@@ -1762,10 +1650,7 @@ export const getOverview = managerController(async (req, res) => {
   };
 
   const hourlyMap = new Map(
-    hourlyRows.map((row) => [
-      Number(row.hour),
-      Number(row.orders),
-    ]),
+    hourlyRows.map((row) => [Number(row.hour), Number(row.orders)]),
   );
 
   const hourlyTrend = Array.from({ length: 24 }, (_, hour) => ({
@@ -1869,10 +1754,7 @@ export const getKitchenOrders = managerController(async (req, res) => {
   ]);
 
   const outletId = requireManagerOutletId(req);
-  const { page, limit, skip } = parsePagination(
-    req.query,
-    50,
-  );
+  const { page, limit, skip } = parsePagination(req.query, 50);
 
   const search =
     req.query.search === undefined
@@ -1885,10 +1767,7 @@ export const getKitchenOrders = managerController(async (req, res) => {
       : String(req.query.sortOrder).toLowerCase();
 
   if (!["asc", "desc"].includes(sortOrder)) {
-    throw new HttpError(
-      "sortOrder must be asc or desc.",
-      400,
-    );
+    throw new HttpError("sortOrder must be asc or desc.", 400);
   }
 
   let selectedStatus = null;
@@ -2019,9 +1898,7 @@ export const getKitchenOrders = managerController(async (req, res) => {
       })
     : [];
 
-  const orderMap = new Map(
-    fetchedOrders.map((order) => [order.id, order]),
-  );
+  const orderMap = new Map(fetchedOrders.map((order) => [order.id, order]));
 
   const now = new Date();
 
@@ -2243,11 +2120,7 @@ export const getOrderDetails = managerController(async (req, res) => {
   const outletId = requireManagerOutletId(req);
   const orderIdentifier = getOrderIdentifier(req);
 
-  const order = await findManagerOrder(
-    prisma,
-    outletId,
-    orderIdentifier,
-  );
+  const order = await findManagerOrder(prisma, outletId, orderIdentifier);
 
   if (!order) {
     throw new HttpError(
@@ -2298,60 +2171,55 @@ export const updateOrderStatus = managerController(async (req, res) => {
 
   const updated = await prisma.$transaction(
     async (tx) => {
-      const order = await findManagerOrder(
-        tx,
-        outletId,
-        orderIdentifier,
-        {
-          items: {
-            orderBy: {
-              id: "asc",
-            },
-            include: {
-              addons: true,
-            },
+      const order = await findManagerOrder(tx, outletId, orderIdentifier, {
+        items: {
+          orderBy: {
+            id: "asc",
           },
-          payments: {
-            orderBy: {
-              createdAt: "desc",
-            },
-            take: 5,
-          },
-          events: {
-            orderBy: {
-              createdAt: "asc",
-            },
-            include: {
-              actor: {
-                select: {
-                  id: true,
-                  fullName: true,
-                  role: true,
-                },
-              },
-            },
-          },
-          etaOverrides: {
-            orderBy: {
-              createdAt: "desc",
-            },
-            include: {
-              manager: {
-                select: {
-                  id: true,
-                  fullName: true,
-                },
-              },
-            },
-          },
-          notifications: {
-            orderBy: {
-              createdAt: "desc",
-            },
-            take: 30,
+          include: {
+            addons: true,
           },
         },
-      );
+        payments: {
+          orderBy: {
+            createdAt: "desc",
+          },
+          take: 5,
+        },
+        events: {
+          orderBy: {
+            createdAt: "asc",
+          },
+          include: {
+            actor: {
+              select: {
+                id: true,
+                fullName: true,
+                role: true,
+              },
+            },
+          },
+        },
+        etaOverrides: {
+          orderBy: {
+            createdAt: "desc",
+          },
+          include: {
+            manager: {
+              select: {
+                id: true,
+                fullName: true,
+              },
+            },
+          },
+        },
+        notifications: {
+          orderBy: {
+            createdAt: "desc",
+          },
+          take: 30,
+        },
+      });
 
       if (!order) {
         throw new HttpError(
@@ -2369,10 +2237,7 @@ export const updateOrderStatus = managerController(async (req, res) => {
         );
       }
 
-      if (
-        order.status === "HANDED_OFF" ||
-        order.status === "CANCELLED"
-      ) {
+      if (order.status === "HANDED_OFF" || order.status === "CANCELLED") {
         throw new HttpError(
           "This order is already in a terminal state.",
           409,
@@ -2495,6 +2360,18 @@ export const updateOrderStatus = managerController(async (req, res) => {
     },
   );
 
+  try {
+    emitOrderStatusUpdated({
+      outletId,
+      customerId: updated.customerId,
+      orderId: updated.id,
+      orderNumber: updated.orderNumber,
+      status: updated.status,
+      updatedAt: updated.updatedAt?.toISOString() || null,
+    });
+  } catch (error) {
+    console.error("Failed to emit order:status-updated:", error.message);
+  }
   return success(
     res,
     {
@@ -2515,11 +2392,7 @@ export const updateOrderStatus = managerController(async (req, res) => {
 export const overrideOrderEta = managerController(async (req, res) => {
   assertObject(req.body);
 
-  assertAllowedKeys(req.body, [
-    "estimatedPrepMinutes",
-    "minutes",
-    "reason",
-  ]);
+  assertAllowedKeys(req.body, ["estimatedPrepMinutes", "minutes", "reason"]);
 
   const outletId = requireManagerOutletId(req);
   const managerId = requireManagerId(req);
@@ -2535,73 +2408,63 @@ export const overrideOrderEta = managerController(async (req, res) => {
     );
   }
 
-  const requestedMinutes =
-    req.body.estimatedPrepMinutes ?? req.body.minutes;
+  const requestedMinutes = req.body.estimatedPrepMinutes ?? req.body.minutes;
 
-  const reason = requiredText(
-    req.body.reason,
-    "Reason",
-    250,
-  );
+  const reason = requiredText(req.body.reason, "Reason", 250);
 
   const now = new Date();
 
   const result = await prisma.$transaction(
     async (tx) => {
-      const order = await findManagerOrder(
-        tx,
-        outletId,
-        orderIdentifier,
-        {
-          items: {
-            orderBy: {
-              id: "asc",
-            },
-            include: {
-              addons: true,
-            },
+      const order = await findManagerOrder(tx, outletId, orderIdentifier, {
+        items: {
+          orderBy: {
+            id: "asc",
           },
-          events: {
-            orderBy: {
-              createdAt: "asc",
-            },
-            include: {
-              actor: {
-                select: {
-                  id: true,
-                  fullName: true,
-                  role: true,
-                },
-              },
-            },
-          },
-          payments: {
-            orderBy: {
-              createdAt: "desc",
-            },
-            take: 5,
-          },
-          etaOverrides: {
-            orderBy: {
-              createdAt: "desc",
-            },
-            include: {
-              manager: {
-                select: {
-                  id: true,
-                  fullName: true,
-                },
-              },
-            },
-          },
-          notifications: {
-            orderBy: {
-              createdAt: "desc",
-            },
-            take: 30,
+          include: {
+            addons: true,
           },
         },
-      );
+        events: {
+          orderBy: {
+            createdAt: "asc",
+          },
+          include: {
+            actor: {
+              select: {
+                id: true,
+                fullName: true,
+                role: true,
+              },
+            },
+          },
+        },
+        payments: {
+          orderBy: {
+            createdAt: "desc",
+          },
+          take: 5,
+        },
+        etaOverrides: {
+          orderBy: {
+            createdAt: "desc",
+          },
+          include: {
+            manager: {
+              select: {
+                id: true,
+                fullName: true,
+              },
+            },
+          },
+        },
+        notifications: {
+          orderBy: {
+            createdAt: "desc",
+          },
+          take: 30,
+        },
+      });
 
       if (!order) {
         throw new HttpError(
@@ -2780,6 +2643,19 @@ export const overrideOrderEta = managerController(async (req, res) => {
     },
   );
 
+  try {
+    emitOrderEtaUpdated({
+      outletId,
+      customerId: result.freshOrder.customerId,
+      orderId: result.freshOrder.id,
+      orderNumber: result.freshOrder.orderNumber,
+      estimatedPrepMinutes: result.newMinutes,
+      promisedAt: result.newPromisedAt.toISOString(),
+      updatedAt: result.freshOrder.updatedAt?.toISOString() || null,
+    });
+  } catch (error) {
+    console.error("Failed to emit order:eta-updated:", error.message);
+  }
   return success(
     res,
     {
@@ -2881,29 +2757,19 @@ export const getOrders = managerController(async (req, res) => {
   }
 
   if (req.query.paymentStatus !== undefined) {
-    where.paymentStatus = normalizePaymentStatus(
-      req.query.paymentStatus,
-    );
+    where.paymentStatus = normalizePaymentStatus(req.query.paymentStatus);
   }
 
   if (req.query.paymentMethod !== undefined) {
-    where.paymentMethod = normalizePaymentMethod(
-      req.query.paymentMethod,
-    );
+    where.paymentMethod = normalizePaymentMethod(req.query.paymentMethod);
   }
 
   if (req.query.fulfillmentType !== undefined) {
-    where.fulfillmentType = normalizeFulfillmentType(
-      req.query.fulfillmentType,
-    );
+    where.fulfillmentType = normalizeFulfillmentType(req.query.fulfillmentType);
   }
 
   if (req.query.search !== undefined) {
-    const search = requiredText(
-      req.query.search,
-      "Search",
-      120,
-    );
+    const search = requiredText(req.query.search, "Search", 120);
 
     where.OR = [
       {
@@ -2921,25 +2787,16 @@ export const getOrders = managerController(async (req, res) => {
     ];
   }
 
-  if (
-    req.query.from !== undefined ||
-    req.query.to !== undefined
-  ) {
+  if (req.query.from !== undefined || req.query.to !== undefined) {
     if (!req.query.from || !req.query.to) {
-      throw new HttpError(
-        "Both from and to dates are required.",
-        400,
-      );
+      throw new HttpError("Both from and to dates are required.", 400);
     }
 
     const from = parseDateOnly(req.query.from, "From date");
     const to = parseDateOnly(req.query.to, "To date", true);
 
     if (from > to) {
-      throw new HttpError(
-        "The from date must not be after the to date.",
-        400,
-      );
+      throw new HttpError("The from date must not be after the to date.", 400);
     }
 
     where.placedAt = {
@@ -2949,9 +2806,7 @@ export const getOrders = managerController(async (req, res) => {
   }
 
   const sortBy =
-    req.query.sortBy === undefined
-      ? "placedAt"
-      : String(req.query.sortBy);
+    req.query.sortBy === undefined ? "placedAt" : String(req.query.sortBy);
 
   const sortOrder =
     req.query.sortOrder === undefined
@@ -2973,10 +2828,7 @@ export const getOrders = managerController(async (req, res) => {
   }
 
   if (!["asc", "desc"].includes(sortOrder)) {
-    throw new HttpError(
-      "sortOrder must be asc or desc.",
-      400,
-    );
+    throw new HttpError("sortOrder must be asc or desc.", 400);
   }
 
   const orderBy = [
@@ -3031,10 +2883,7 @@ export const getOrderTimeline = managerController(async (req, res) => {
   const order = await prisma.order.findFirst({
     where: {
       outletId,
-      OR: [
-        { id: orderIdentifier },
-        { orderNumber: orderIdentifier },
-      ],
+      OR: [{ id: orderIdentifier }, { orderNumber: orderIdentifier }],
     },
     select: {
       id: true,
@@ -3117,11 +2966,7 @@ export const getMenuAvailability = managerController(async (req, res) => {
   };
 
   if (req.query.search !== undefined) {
-    const search = requiredText(
-      req.query.search,
-      "Search",
-      120,
-    );
+    const search = requiredText(req.query.search, "Search", 120);
 
     where.foodItem = {
       ...(where.foodItem || {}),
@@ -3133,11 +2978,7 @@ export const getMenuAvailability = managerController(async (req, res) => {
   }
 
   if (req.query.category !== undefined) {
-    const category = requiredText(
-      req.query.category,
-      "Category",
-      80,
-    );
+    const category = requiredText(req.query.category, "Category", 80);
 
     where.foodItem = {
       ...(where.foodItem || {}),
@@ -3169,14 +3010,11 @@ export const getMenuAvailability = managerController(async (req, res) => {
   }
 
   if (req.query.isAvailable !== undefined) {
-    where.isAvailable = parseBooleanQuery(
-      req.query.isAvailable,
-      "isAvailable",
-    );
+    where.isAvailable = parseBooleanQuery(req.query.isAvailable, "isAvailable");
   }
 
-  const [mappings, totalItems, allMappings, availableItems] =
-    await Promise.all([
+  const [mappings, totalItems, allMappings, availableItems] = await Promise.all(
+    [
       prisma.outletMenuItem.findMany({
         where,
         include: {
@@ -3231,7 +3069,8 @@ export const getMenuAvailability = managerController(async (req, res) => {
           },
         },
       }),
-    ]);
+    ],
+  );
 
   return success(
     res,
@@ -3241,10 +3080,7 @@ export const getMenuAvailability = managerController(async (req, res) => {
       summary: {
         totalItems: allMappings,
         availableItems,
-        unavailableItems: Math.max(
-          0,
-          allMappings - availableItems,
-        ),
+        unavailableItems: Math.max(0, allMappings - availableItems),
       },
 
       pagination: {
@@ -3288,29 +3124,16 @@ export const updateMenuAvailability = managerController(async (req, res) => {
    * the central FoodItem.id. The lookup below therefore uses
    * foodItemId + outletId, not an arbitrary mapping ID.
    */
-  const foodItemId = validateId(
-    req.params.itemId,
-    "food item ID",
-  );
+  const foodItemId = validateId(req.params.itemId, "food item ID");
 
-  if (
-    req.body.isAvailable !== undefined &&
-    req.body.available !== undefined
-  ) {
-    throw new HttpError(
-      "Send either isAvailable or available, not both.",
-      400,
-    );
+  if (req.body.isAvailable !== undefined && req.body.available !== undefined) {
+    throw new HttpError("Send either isAvailable or available, not both.", 400);
   }
 
-  const availabilityValue =
-    req.body.isAvailable ?? req.body.available;
+  const availabilityValue = req.body.isAvailable ?? req.body.available;
 
   if (typeof availabilityValue !== "boolean") {
-    throw new HttpError(
-      "isAvailable must be true or false.",
-      400,
-    );
+    throw new HttpError("isAvailable must be true or false.", 400);
   }
 
   if (
@@ -3343,16 +3166,10 @@ export const updateMenuAvailability = managerController(async (req, res) => {
       ? req.body.expectedRestockAt
       : req.body.restockAt;
 
-  const reason = optionalText(
-    reasonValue,
-    "Unavailability reason",
-    120,
-  );
+  const reason = optionalText(reasonValue, "Unavailability reason", 120);
 
   const restockAt =
-    restockValue === undefined
-      ? undefined
-      : parseRestockDate(restockValue);
+    restockValue === undefined ? undefined : parseRestockDate(restockValue);
 
   const updated = await prisma.$transaction(async (tx) => {
     const mapping = await tx.outletMenuItem.findFirst({
@@ -3472,6 +3289,17 @@ export const updateMenuAvailability = managerController(async (req, res) => {
     });
   });
 
+  try {
+    emitMenuAvailabilityUpdated({
+      outletId,
+      foodItemId: updated.foodItemId,
+      isAvailable: updated.isAvailable,
+      stockQuantity: updated.stockQuantity,
+      updatedAt: updated.updatedAt?.toISOString() || null,
+    });
+  } catch (error) {
+    console.error("Failed to emit menu:availability-updated:", error.message);
+  }
   return success(
     res,
     {
@@ -3487,11 +3315,7 @@ export const updateMenuAvailability = managerController(async (req, res) => {
 ========================================================= */
 
 export const getPerformance = managerController(async (req, res) => {
-  assertQueryKeys(req.query, [
-    "from",
-    "to",
-    "range",
-  ]);
+  assertQueryKeys(req.query, ["from", "to", "range"]);
 
   const outletId = requireManagerOutletId(req);
   const now = new Date();
@@ -3787,9 +3611,7 @@ export const getPerformance = managerController(async (req, res) => {
     }),
   ]);
 
-  const revenue = roundMoney(
-    revenueAggregate._sum.totalAmount || 0,
-  );
+  const revenue = roundMoney(revenueAggregate._sum.totalAmount || 0);
 
   const averageOrderValue = paidOrderCount
     ? roundMoney(revenue / paidOrderCount)
@@ -3803,21 +3625,18 @@ export const getPerformance = managerController(async (req, res) => {
   };
 
   const currentStatusMap = new Map(
-    orderStatusRows.map((row) => [
-      row.status,
-      row._count._all,
-    ]),
+    orderStatusRows.map((row) => [row.status, row._count._all]),
   );
 
   const activeOrders = await prisma.order.count({
     where: {
-        outletId,
-        paymentStatus: "SUCCEEDED",
-        status: {
+      outletId,
+      paymentStatus: "SUCCEEDED",
+      status: {
         in: ACTIVE_ORDER_STATUSES,
-        },
+      },
     },
-    });
+  });
 
   const activeLate = activeLateOrders;
   const completedLate = Number(timing.completedLate || 0);
@@ -3846,9 +3665,7 @@ export const getPerformance = managerController(async (req, res) => {
   const averagePromisedPreparationMinutes =
     promisedPreparationAggregate._avg.estimatedPrepMinutes == null
       ? null
-      : Math.round(
-          promisedPreparationAggregate._avg.estimatedPrepMinutes,
-        );
+      : Math.round(promisedPreparationAggregate._avg.estimatedPrepMinutes);
 
   const averageOrderToReadyMinutes =
     timing.averageOrderToReadyMinutes == null
@@ -3951,17 +3768,10 @@ export const getAccount = managerController(async (req, res) => {
   });
 
   if (!manager || manager.role !== "OUTLET_MANAGER") {
-    throw new HttpError(
-      "Manager account not found.",
-      404,
-      "MANAGER_NOT_FOUND",
-    );
+    throw new HttpError("Manager account not found.", 404, "MANAGER_NOT_FOUND");
   }
 
-  if (
-    !manager.managedOutlet ||
-    manager.managedOutlet.id !== outletId
-  ) {
+  if (!manager.managedOutlet || manager.managedOutlet.id !== outletId) {
     throw new HttpError(
       "The assigned outlet could not be verified.",
       403,
@@ -4001,11 +3811,7 @@ export const getAccount = managerController(async (req, res) => {
 export const updateAccount = managerController(async (req, res) => {
   assertObject(req.body);
 
-  assertAllowedKeys(req.body, [
-    "fullName",
-    "email",
-    "avatarUrl",
-  ]);
+  assertAllowedKeys(req.body, ["fullName", "email", "avatarUrl"]);
 
   const managerId = requireManagerId(req);
   const outletId = requireManagerOutletId(req);
@@ -4013,20 +3819,13 @@ export const updateAccount = managerController(async (req, res) => {
   const keys = Object.keys(req.body);
 
   if (!keys.length) {
-    throw new HttpError(
-      "Provide at least one profile field to update.",
-      400,
-    );
+    throw new HttpError("Provide at least one profile field to update.", 400);
   }
 
   const updateData = {};
 
   if (req.body.fullName !== undefined) {
-    updateData.fullName = requiredText(
-      req.body.fullName,
-      "Full name",
-      120,
-    );
+    updateData.fullName = requiredText(req.body.fullName, "Full name", 120);
   }
 
   if (req.body.email !== undefined) {
@@ -4034,22 +3833,13 @@ export const updateAccount = managerController(async (req, res) => {
       updateData.email = null;
     } else {
       if (typeof req.body.email !== "string") {
-        throw new HttpError(
-          "Email must be a string or null.",
-          400,
-        );
+        throw new HttpError("Email must be a string or null.", 400);
       }
 
       const email = req.body.email.trim().toLowerCase();
 
-      if (
-        email.length > 255 ||
-        !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)
-      ) {
-        throw new HttpError(
-          "Enter a valid email address.",
-          400,
-        );
+      if (email.length > 255 || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
+        throw new HttpError("Enter a valid email address.", 400);
       }
 
       updateData.email = email;
@@ -4111,11 +3901,7 @@ export const updateAccount = managerController(async (req, res) => {
       },
     });
 
-    if (
-      !current ||
-      current.role !== "OUTLET_MANAGER" ||
-      !current.isActive
-    ) {
+    if (!current || current.role !== "OUTLET_MANAGER" || !current.isActive) {
       throw new HttpError(
         "Manager account is unavailable.",
         403,

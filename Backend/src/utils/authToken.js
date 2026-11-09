@@ -147,7 +147,7 @@ export function getAuthCookieOptions() {
     httpOnly: true,
     secure,
     sameSite: configuredSameSite,
-    path: process.env.AUTH_COOKIE_PATH || "/api/v1",
+    path: process.env.AUTH_COOKIE_PATH || "/",
     maxAge: getJwtLifetimeMs(),
   };
 

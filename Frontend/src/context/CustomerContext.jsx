@@ -6,7 +6,7 @@ import {
   useMemo,
   useState,
 } from "react";
-
+import socketClient from "../services/socketClient.js";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { useAuth } from "./authContext.jsx";
@@ -71,11 +71,7 @@ export function CustomerProvider({ children }) {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const {
-    user,
-    loading: authLoading,
-    logout,
-  } = useAuth();
+  const { user, loading: authLoading, logout } = useAuth();
 
   const [bootstrapState, setBootstrapState] = useState({
     userId: null,
@@ -107,8 +103,7 @@ export function CustomerProvider({ children }) {
 
   const [pendingLocation, setPendingLocation] = useState(null);
   const [locationChoices, setLocationChoices] = useState([]);
-  const [locationChoicePincode, setLocationChoicePincode] =
-    useState("");
+  const [locationChoicePincode, setLocationChoicePincode] = useState("");
 
   const [cateringEnquiries, setCateringEnquiries] = useState([]);
 
@@ -170,20 +165,16 @@ export function CustomerProvider({ children }) {
   ====================================================== */
 
   const loadCustomerData = useCallback(async () => {
-    const [
-      bootstrap,
-      ordersData,
-      rewards,
-      rewardTransactions,
-    ] = await Promise.all([
-      customerApi.getBootstrap(),
-      customerApi.getOrders({ page: 1, limit: 100 }),
-      customerApi.getRewards(),
-      customerApi.getRewardTransactions({
-        page: 1,
-        limit: 100,
-      }),
-    ]);
+    const [bootstrap, ordersData, rewards, rewardTransactions] =
+      await Promise.all([
+        customerApi.getBootstrap(),
+        customerApi.getOrders({ page: 1, limit: 100 }),
+        customerApi.getRewards(),
+        customerApi.getRewardTransactions({
+          page: 1,
+          limit: 100,
+        }),
+      ]);
 
     return {
       bootstrap,
@@ -194,12 +185,7 @@ export function CustomerProvider({ children }) {
   }, []);
 
   const applyCustomerData = useCallback((result) => {
-    const {
-      bootstrap,
-      ordersData,
-      rewards,
-      rewardTransactions,
-    } = result;
+    const { bootstrap, ordersData, rewards, rewardTransactions } = result;
 
     setProfile(bootstrap.profile || null);
     setAddresses(bootstrap.addresses || []);
@@ -277,6 +263,72 @@ export function CustomerProvider({ children }) {
     logout,
     redirectToLogin,
   ]);
+
+  useEffect(() => {
+    if (authLoading || user?.role !== "customer") {
+      return undefined;
+    }
+
+    let active = true;
+    let reconnecting = false;
+
+    const socket = socketClient.connect();
+
+    const refreshCustomerOrders = async () => {
+      try {
+        await refreshOrders();
+      } catch (error) {
+        if (active) {
+          console.error(
+            "Unable to refresh customer orders after socket event:",
+            error,
+          );
+        }
+      }
+    };
+
+    const onOrderStatusUpdated = () => {
+      if (!active) return;
+
+      refreshOrders();
+    };
+
+    const onOrderEtaUpdated = () => {
+      if (!active) return;
+
+      refreshOrders();
+    };
+
+    const onConnect = () => {
+      if (!active) return;
+
+      if (reconnecting) {
+        refreshCustomerOrders();
+      }
+
+      reconnecting = true;
+    };
+
+    const onDisconnect = () => {
+      reconnecting = true;
+    };
+
+    socket.on("order:status-updated", onOrderStatusUpdated);
+    socket.on("order:eta-updated", onOrderEtaUpdated);
+    socket.on("connect", onConnect);
+    socket.on("disconnect", onDisconnect);
+
+    return () => {
+      active = false;
+
+      socket.off("order:status-updated", onOrderStatusUpdated);
+      socket.off("order:eta-updated", onOrderEtaUpdated);
+      socket.off("connect", onConnect);
+      socket.off("disconnect", onDisconnect);
+
+      socketClient.disconnect();
+    };
+  }, [authLoading, user?.id, user?.role, refreshOrders]);
 
   const refresh = useCallback(async () => {
     const result = await withCustomerAuth(loadCustomerData);
@@ -358,8 +410,7 @@ export function CustomerProvider({ children }) {
 
       if (!result.serviceable || eligibleOutlets.length === 0) {
         notify(
-          result.reason ||
-            "No active outlet currently serves this pincode.",
+          result.reason || "No active outlet currently serves this pincode.",
           "error",
         );
 
@@ -405,12 +456,7 @@ export function CustomerProvider({ children }) {
 
       return result;
     },
-    [
-      selectedOutletId,
-      cart.length,
-      commitOutlet,
-      notify,
-    ],
+    [selectedOutletId, cart.length, commitOutlet, notify],
   );
 
   const chooseOutlet = useCallback(
@@ -424,9 +470,7 @@ export function CustomerProvider({ children }) {
       }
 
       const targetPincode =
-        locationChoicePincode ||
-        pendingLocation?.pincode ||
-        selectedPincode;
+        locationChoicePincode || pendingLocation?.pincode || selectedPincode;
 
       if (!targetPincode) {
         throw new Error("Check a delivery pincode first.");
@@ -478,14 +522,14 @@ export function CustomerProvider({ children }) {
   const buildCartPayload = useCallback(
     (lines = cart, options = {}) => {
       const addressId =
-        options.addressId !== undefined
-          ? options.addressId
-          : selectedAddressId;
+        options.addressId !== undefined ? options.addressId : selectedAddressId;
 
-      const nextCoupon =
-        Object.prototype.hasOwnProperty.call(options, "couponCode")
-          ? options.couponCode
-          : couponCode;
+      const nextCoupon = Object.prototype.hasOwnProperty.call(
+        options,
+        "couponCode",
+      )
+        ? options.couponCode
+        : couponCode;
 
       const nextPoints =
         options.loyaltyPoints !== undefined
@@ -498,19 +542,13 @@ export function CustomerProvider({ children }) {
           itemId: line.itemId,
           outletId: line.outletId,
           quantity: line.quantity,
-          ...(line.portionId
-            ? { portionId: line.portionId }
-            : {}),
-          ...(line.portion
-            ? { portion: line.portion }
-            : {}),
+          ...(line.portionId ? { portionId: line.portionId } : {}),
+          ...(line.portion ? { portion: line.portion } : {}),
           addons: (line.addons || []).map((addon) => ({
             id: addon.id,
             name: addon.name,
           })),
-          ...(line.specialNote
-            ? { specialNote: line.specialNote }
-            : {}),
+          ...(line.specialNote ? { specialNote: line.specialNote } : {}),
         })),
         fulfillmentType: "DELIVERY",
         loyaltyPoints: nextPoints,
@@ -612,9 +650,7 @@ export function CustomerProvider({ children }) {
         }
 
         const key = cartLineKey(line);
-        const existing = cart.find(
-          (entry) => cartLineKey(entry) === key,
-        );
+        const existing = cart.find((entry) => cartLineKey(entry) === key);
 
         const nextCart = existing
           ? cart.map((entry) =>
@@ -628,10 +664,7 @@ export function CustomerProvider({ children }) {
           : [...cart, line];
 
         if (nextCart.some((entry) => entry.outletId !== selectedOutletId)) {
-          notify(
-            "A cart can contain items from one outlet only.",
-            "error",
-          );
+          notify("A cart can contain items from one outlet only.", "error");
 
           return false;
         }
@@ -710,16 +743,11 @@ export function CustomerProvider({ children }) {
     [cart, validateCart, selectedOutletId, notify],
   );
 
-  const removeCartLine = useCallback(
-    (key) => {
-      setCart((current) =>
-        current.filter((line) => cartLineKey(line) !== key),
-      );
+  const removeCartLine = useCallback((key) => {
+    setCart((current) => current.filter((line) => cartLineKey(line) !== key));
 
-      setCartQuote(null);
-    },
-    [],
-  );
+    setCartQuote(null);
+  }, []);
 
   const clearCart = useCallback(() => {
     setCart([]);
@@ -735,7 +763,9 @@ export function CustomerProvider({ children }) {
 
   const applyCoupon = useCallback(
     async (code) => {
-      const cleanCode = String(code || "").trim().toUpperCase();
+      const cleanCode = String(code || "")
+        .trim()
+        .toUpperCase();
 
       if (!cleanCode) {
         throw new Error("Enter a coupon code.");
@@ -764,9 +794,7 @@ export function CustomerProvider({ children }) {
       couponCode: null,
     });
 
-    const result = await withCustomerAuth(() =>
-      customerApi.quoteCart(payload),
-    );
+    const result = await withCustomerAuth(() => customerApi.quoteCart(payload));
 
     setCouponCode(null);
     setCartQuote(result);
@@ -872,9 +900,7 @@ export function CustomerProvider({ children }) {
           : customerApi.createAddress(cleanPayload),
       );
 
-      const result = await withCustomerAuth(() =>
-        customerApi.getAddresses(),
-      );
+      const result = await withCustomerAuth(() => customerApi.getAddresses());
 
       setAddresses(result.addresses || []);
 
@@ -891,17 +917,11 @@ export function CustomerProvider({ children }) {
 
   const deleteAddress = useCallback(
     async (addressId) => {
-      const previous = addresses.find(
-        (address) => address.id === addressId,
-      );
+      const previous = addresses.find((address) => address.id === addressId);
 
-      await withCustomerAuth(() =>
-        customerApi.deleteAddress(addressId),
-      );
+      await withCustomerAuth(() => customerApi.deleteAddress(addressId));
 
-      const result = await withCustomerAuth(() =>
-        customerApi.getAddresses(),
-      );
+      const result = await withCustomerAuth(() => customerApi.getAddresses());
 
       const nextAddresses = result.addresses || [];
 
@@ -919,9 +939,7 @@ export function CustomerProvider({ children }) {
           await requestLocation(replacement.pincode);
         }
       } else if (previous?.isDefault) {
-        const replacement = nextAddresses.find(
-          (address) => address.isDefault,
-        );
+        const replacement = nextAddresses.find((address) => address.isDefault);
 
         if (replacement?.pincode) {
           await requestLocation(replacement.pincode);
@@ -930,13 +948,7 @@ export function CustomerProvider({ children }) {
 
       notify("Address removed.");
     },
-    [
-      addresses,
-      selectedAddressId,
-      withCustomerAuth,
-      requestLocation,
-      notify,
-    ],
+    [addresses, selectedAddressId, withCustomerAuth, requestLocation, notify],
   );
 
   const setDefaultAddress = useCallback(
@@ -945,9 +957,7 @@ export function CustomerProvider({ children }) {
         customerApi.setDefaultAddress(addressId),
       );
 
-      const result = await withCustomerAuth(() =>
-        customerApi.getAddresses(),
-      );
+      const result = await withCustomerAuth(() => customerApi.getAddresses());
 
       setAddresses(result.addresses || []);
       setSelectedAddressId(updated.id);
@@ -958,19 +968,12 @@ export function CustomerProvider({ children }) {
 
       notify("Default address updated.");
     },
-    [
-      withCustomerAuth,
-      selectedPincode,
-      requestLocation,
-      notify,
-    ],
+    [withCustomerAuth, selectedPincode, requestLocation, notify],
   );
 
   const selectAddress = useCallback(
     async (addressId) => {
-      const address = addresses.find(
-        (entry) => entry.id === addressId,
-      );
+      const address = addresses.find((entry) => entry.id === addressId);
 
       if (!address) return;
 
@@ -980,9 +983,7 @@ export function CustomerProvider({ children }) {
         const result = await requestLocation(address.pincode);
 
         if (!result.serviceable) {
-          throw new Error(
-            result.reason || "This address is not serviceable.",
-          );
+          throw new Error(result.reason || "This address is not serviceable.");
         }
       }
     },
@@ -1162,9 +1163,7 @@ export function useCustomer() {
   const value = useContext(CustomerContext);
 
   if (!value) {
-    throw new Error(
-      "useCustomer must be used inside CustomerProvider.",
-    );
+    throw new Error("useCustomer must be used inside CustomerProvider.");
   }
 
   return value;

@@ -6,7 +6,8 @@ import {
   useMemo,
   useState,
 } from "react";
-
+import { useAuth } from "./authContext.jsx";
+import socketClient from "../services/socketClient.js";
 import managerApi from "../services/managerApi.js";
 
 const ManagerContext = createContext(null);
@@ -51,6 +52,7 @@ function buildAttention({ kitchenOrders, lateOrders, menu }) {
 }
 
 export function ManagerProvider({ children }) {
+  const { user, loading: authLoading } = useAuth();
   const [workspace, setWorkspace] = useState(null);
 
   const [orders, setOrders] = useState([]);
@@ -259,11 +261,124 @@ export function ManagerProvider({ children }) {
   );
 
   useEffect(() => {
+    if (authLoading || user?.role !== "outlet_manager") {
+      return undefined;
+    }
+
     refresh().catch(() => {
       // The error is exposed through context.
     });
-  }, [refresh]);
+  }, [authLoading, user?.id, user?.role, refresh]);
 
+  useEffect(() => {
+    if (authLoading || user?.role !== "outlet_manager") {
+      return undefined;
+    }
+
+    let active = true;
+    let reconnecting = false;
+
+    const socket = socketClient.connect();
+
+    const refreshKitchenAndOrders = async () => {
+      try {
+        await Promise.all([refreshKitchen(), refreshOrders()]);
+      } catch (error) {
+        if (active) {
+          console.error(
+            "Unable to refresh manager orders after socket event:",
+            error,
+          );
+        }
+      }
+    };
+
+    const onOrderCreated = () => {
+      if (!active) return;
+
+      refreshKitchenAndOrders();
+    };
+
+    const onOrderStatusUpdated = () => {
+      if (!active) return;
+
+      refreshKitchenAndOrders();
+    };
+
+    const onOrderEtaUpdated = () => {
+      if (!active) return;
+
+      refreshKitchenAndOrders();
+    };
+
+    const onMenuAvailabilityUpdated = async () => {
+      if (!active) return;
+
+      try {
+        await refreshMenu();
+      } catch (error) {
+        if (active) {
+          console.error(
+            "Unable to refresh manager menu after socket event:",
+            error,
+          );
+        }
+      }
+    };
+
+    const onConnect = async () => {
+      if (!active) return;
+
+      // Initial connection is already followed by the initial
+      // workspace refresh. Only reconnects need recovery refresh.
+      if (reconnecting) {
+        try {
+          await refresh();
+        } catch (error) {
+          console.error(
+            "Unable to restore manager workspace after reconnect:",
+            error,
+          );
+        }
+      }
+
+      reconnecting = true;
+    };
+
+    const onDisconnect = () => {
+      reconnecting = true;
+    };
+
+    socket.on("order:created", onOrderCreated);
+    socket.on("order:status-updated", onOrderStatusUpdated);
+    socket.on("order:eta-updated", onOrderEtaUpdated);
+    socket.on("menu:availability-updated", onMenuAvailabilityUpdated);
+
+    socket.on("connect", onConnect);
+    socket.on("disconnect", onDisconnect);
+
+    return () => {
+      active = false;
+
+      socket.off("order:created", onOrderCreated);
+      socket.off("order:status-updated", onOrderStatusUpdated);
+      socket.off("order:eta-updated", onOrderEtaUpdated);
+      socket.off("menu:availability-updated", onMenuAvailabilityUpdated);
+
+      socket.off("connect", onConnect);
+      socket.off("disconnect", onDisconnect);
+
+      socketClient.disconnect();
+    };
+  }, [
+    authLoading,
+    user?.id,
+    user?.role,
+    refresh,
+    refreshKitchen,
+    refreshOrders,
+    refreshMenu,
+  ]);
   const value = useMemo(
     () => ({
       ...workspace,
