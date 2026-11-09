@@ -413,6 +413,8 @@ export const createPaymentIntent = asyncHandler(async (req, res) => {
     },
     {
       isolationLevel: "Serializable",
+  maxWait: 10_000,
+  timeout: 15_000,
     },
   );
 
@@ -826,6 +828,8 @@ export const confirmMockPayment = asyncHandler(async (req, res) => {
     },
     {
       isolationLevel: "Serializable",
+  maxWait: 10_000,
+  timeout: 15_000,
     },
   );
 

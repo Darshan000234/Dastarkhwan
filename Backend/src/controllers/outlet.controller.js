@@ -3381,6 +3381,8 @@ async function createManagerOtpChallenge({
 
     {
       isolationLevel: "Serializable",
+  maxWait: 10_000,
+  timeout: 15_000,
     },
   );
 
@@ -3760,6 +3762,8 @@ export async function verifyManagerOtp(req, res, next) {
 
       {
         isolationLevel: "Serializable",
+  maxWait: 10_000,
+  timeout: 15_000,
       },
     );
 
@@ -4045,6 +4049,8 @@ export async function assignManager(req, res, next) {
 
       {
         isolationLevel: "Serializable",
+  maxWait: 10_000,
+  timeout: 15_000,
       },
     );
 

@@ -2356,6 +2356,9 @@ export const updateOrderStatus = managerController(async (req, res) => {
     },
     {
       isolationLevel: "Serializable",
+  maxWait: 10_000,
+  timeout: 15_000,
+      
     },
   );
 
@@ -2639,6 +2642,8 @@ export const overrideOrderEta = managerController(async (req, res) => {
     },
     {
       isolationLevel: "Serializable",
+  maxWait: 10_000,
+  timeout: 15_000,
     },
   );
 

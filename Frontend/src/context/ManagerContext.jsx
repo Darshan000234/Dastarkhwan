@@ -210,6 +210,30 @@ export function ManagerProvider({ children }) {
     return nextOrders;
   }, []);
 
+  const refreshOverview = useCallback(async () => {
+    const overviewData = await managerApi.getOverview({
+      range: "today",
+    });
+
+    setWorkspace((current) => {
+      if (!current) return current;
+
+      return {
+        ...current,
+        overview: {
+          ...current.overview,
+          ...overviewData,
+
+          // Preserve values maintained by the existing context.
+          popular: current.overview?.popular || [],
+          attention: current.overview?.attention || [],
+        },
+      };
+    });
+
+    return overviewData;
+  }, []);
+
   const refreshMenu = useCallback(async () => {
     const data = await managerApi.getAllMenuAvailability();
     const nextMenu = data.menuItems || [];
@@ -282,11 +306,15 @@ export function ManagerProvider({ children }) {
 
     const refreshKitchenAndOrders = async () => {
       try {
-        await Promise.all([refreshKitchen(), refreshOrders()]);
+        await Promise.all([
+          refreshKitchen(),
+          refreshOrders(),
+          refreshOverview(),
+        ]);
       } catch (error) {
         if (active) {
           console.error(
-            "Unable to refresh manager orders after socket event:",
+            "Unable to refresh manager data after socket event:",
             error,
           );
         }
@@ -377,6 +405,7 @@ export function ManagerProvider({ children }) {
     refresh,
     refreshKitchen,
     refreshOrders,
+    refreshOverview,
     refreshMenu,
   ]);
   const value = useMemo(
@@ -399,6 +428,7 @@ export function ManagerProvider({ children }) {
       refresh,
       refreshKitchen,
       refreshOrders,
+      refreshOverview,
       refreshMenu,
       run,
     }),
@@ -414,6 +444,7 @@ export function ManagerProvider({ children }) {
       refresh,
       refreshKitchen,
       refreshOrders,
+      refreshOverview,
       refreshMenu,
       run,
     ],

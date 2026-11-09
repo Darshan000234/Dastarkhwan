@@ -794,6 +794,10 @@ export async function requestOtp(req, res, next) {
 
       {
         isolationLevel: "Serializable",
+  maxWait: 10_000,
+  timeout: 15_000,
+        maxWait: 10_000,
+        timeout: 15_000,
       },
     );
 
@@ -1132,6 +1136,10 @@ export async function verifyOtp(req, res, next) {
 
       {
         isolationLevel: "Serializable",
+  maxWait: 10_000,
+  timeout: 15_000,
+        maxWait: 10_000,
+        timeout: 15_000,
       },
     );
 

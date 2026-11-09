@@ -24,7 +24,6 @@ router.get("/outlets/:outletId/analytics", outlets.getOutletAnalytics);
 router.get("/outlets/:outletId/orders", outlets.getOutletOrders);
 router.get("/outlets/:outletId/menu", outlets.getOutletMenu);
 router.post("/outlets/:outletId/manager/otp", outlets.sendManagerOtp);
-router.post("/outlets/:outletId/manager/otp", outlets.sendManagerOtp);
 router.post( "/outlets/:outletId/manager/verify-and-assign", outlets.verifyManagerOtp);
 router.get("/menu/catalog", menu.listCatalog);
 router.get("/menu/catalog/:itemId", menu.getCatalogItem);

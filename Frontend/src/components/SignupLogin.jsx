@@ -9,7 +9,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 
-import { useAuth } from "../context/AuthContext.jsx";
+import { useAuth } from "../context/authContext.jsx";
 
 const BRAND = {
   name: "Dastarkhwan",
