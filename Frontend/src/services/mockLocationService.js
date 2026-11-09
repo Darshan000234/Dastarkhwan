@@ -1,9 +1,9 @@
-import { mockApi } from "./mockApi";
+import { adminApi } from "./adminApi";
 
 export async function getEligibleOutlets(pincode) {
   const clean = String(pincode || "").replace(/\D/g, "");
   if (!/^\d{6}$/.test(clean)) return [];
-  const outlets = await mockApi.getOutlets();
+  const outlets = await adminApi.getOutlets();
   return outlets
     .filter(
       (outlet) => outlet.active && (outlet.pincodes || []).includes(clean),
@@ -38,5 +38,5 @@ export async function checkServiceability(pincode) {
 }
 
 export async function getOutletById(outletId) {
-  return mockApi.getOutletById(outletId);
+  return adminApi.getOutletById(outletId);
 }

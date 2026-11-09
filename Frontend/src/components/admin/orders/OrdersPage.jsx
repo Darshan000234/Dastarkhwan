@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Filter, Eye } from "lucide-react";
-import { mockApi } from "../../../services/mockApi";
+import  { adminApi } from "../../../services/adminApi.js";
 import {
   PageHeader,
   SearchBox,
@@ -39,8 +39,8 @@ export default function OrdersPage() {
     let mounted = true;
     setLoading(true);
     Promise.all([
-      mockApi.getOrders({ search, outletId, status, paymentStatus, from, to }),
-      mockApi.getOutlets(),
+      adminApi.getOrders({ search, outletId, status, paymentStatus, from, to }),
+      adminApi.getOutlets(),
     ])
       .then(([rows, outletRows]) => {
         if (mounted) {

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { mockApi } from "../../../services/mockApi";
+import { adminApi } from "../../../services/adminApi.js";
 import { Field } from "../common/AdminUI";
 
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -73,7 +73,7 @@ export default function OutletSettingsTab({ outlet, onSaved }) {
         prepTime: Number(form.prepTime),
       };
       delete payload.pincodesText;
-      await mockApi.updateOutlet(outlet.id, payload);
+      await adminApi.updateOutlet(outlet.id, payload);
       setMessage("Outlet settings saved to demo storage.");
       await onSaved();
     } catch (err) {

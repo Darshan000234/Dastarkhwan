@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Field, Modal, money } from "../common/AdminUI";
-import { mockApi } from "../../../services/mockApi";
+import { adminApi } from "../../../services/adminApi.js";
 
 export default function OutletAssignmentModal({
   item,
@@ -40,7 +40,7 @@ export default function OutletAssignmentModal({
       return;
     }
     try {
-      await mockApi.assignMenuItemToOutlet({
+      await adminApi.assignMenuItemToOutlet({
         itemId: item.id,
         outletIds: selected,
         available,

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Eye } from "lucide-react";
-import { mockApi } from "../../../services/mockApi";
+import { adminApi } from "../../../services/adminApi.js";
 import {
   SearchBox,
   Select,
@@ -18,7 +18,7 @@ export default function OutletOrdersTab({ outlet }) {
   const [selected, setSelected] = useState(null);
   useEffect(() => {
     let mounted = true;
-    mockApi.getOrders({ outletId: outlet.id }).then((rows) => {
+    adminApi.getOrders({ outletId: outlet.id }).then((rows) => {
       if (mounted) setOrders(rows);
     });
     return () => {

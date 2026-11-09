@@ -13,7 +13,7 @@ import {
   List,
   UserRound,
 } from "lucide-react";
-import { mockApi } from "../../../services/mockApi";
+import { adminApi } from "../../../services/adminApi.js";
 import { PageHeader, StatusBadge, money } from "../common/AdminUI";
 import OutletFormModal from "./OutletFormModal";
 
@@ -28,15 +28,15 @@ export default function OutletsPage() {
 
   const refresh = async () => {
     const [nextOutlets, nextOrders] = await Promise.all([
-      mockApi.getOutlets(),
-      mockApi.getOrders(),
+      adminApi.getOutlets(),
+      adminApi.getOrders(),
     ]);
     setOutlets(nextOutlets);
     setOrders(nextOrders);
   };
   useEffect(() => {
     let mounted = true;
-    Promise.all([mockApi.getOutlets(), mockApi.getOrders()])
+    Promise.all([adminApi.getOutlets(), adminApi.getOrders()])
       .then(([o, r]) => {
         if (mounted) {
           setOutlets(o);
@@ -63,8 +63,8 @@ export default function OutletsPage() {
     setModalOpen(true);
   };
   const save = async (payload) => {
-    if (editing) await mockApi.updateOutlet(editing.id, payload);
-    else await mockApi.createOutlet(payload);
+    if (editing) await adminApi.updateOutlet(editing.id, payload);
+    else await adminApi.createOutlet(payload);
     await refresh();
   };
   const toggleStatus = async (outlet) => {
@@ -74,7 +74,7 @@ export default function OutletsPage() {
       )
     )
       return;
-    await mockApi.updateOutletStatus(outlet.id, !outlet.active);
+    await adminApi.updateOutletStatus(outlet.id, !outlet.active);
     await refresh();
   };
 

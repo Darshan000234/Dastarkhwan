@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Clock3, Edit3, Plus } from "lucide-react";
-import { mockApi } from "../../../services/mockApi";
+import { adminApi } from "../../../services/adminApi.js";
 import { Field, StatusBadge } from "../common/AdminUI";
 
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -69,7 +69,7 @@ export default function TimeBasedMenuTab({
     }
     setBusy(true);
     try {
-      await mockApi.saveTimeMenu(form);
+      await adminApi.saveTimeMenu(form);
       await onRefresh();
       reset();
     } catch (err) {
@@ -81,7 +81,7 @@ export default function TimeBasedMenuTab({
 
   const toggleActive = async (menu) => {
     try {
-      await mockApi.saveTimeMenu({ ...menu, active: !menu.active });
+      await adminApi.saveTimeMenu({ ...menu, active: !menu.active });
       await onRefresh();
     } catch (err) {
       setError(err.message);

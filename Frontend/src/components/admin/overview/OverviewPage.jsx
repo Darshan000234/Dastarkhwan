@@ -10,7 +10,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { Link } from "react-router-dom";
-import { mockApi } from "../../../services/mockApi";
+import { adminApi } from "../../../services/adminApi.js";
 import {
   MetricCard,
   PageHeader,
@@ -29,7 +29,7 @@ export default function OverviewPage() {
 
   useEffect(() => {
     let mounted = true;
-    mockApi
+    adminApi
       .getAdminOverview()
       .then((result) => {
         if (mounted) setData(result);

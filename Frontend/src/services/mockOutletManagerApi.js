@@ -1,4 +1,4 @@
-import { mockApi, subscribeMockApi } from "./mockApi";
+import { adminApi, subscribeadminApi } from "./adminApi";
 
 const readSession = () => {
   try {
@@ -323,10 +323,10 @@ function performanceFor(orders, range) {
 }
 
 export const mockOutletManagerApi = {
-  subscribe: subscribeMockApi,
+  subscribe: subscribeadminApi,
   async getManagerProfile() {
     const session = requireManagerSession();
-    const workspace = await mockApi.getManagerWorkspace({
+    const workspace = await adminApi.getManagerWorkspace({
       outletId: session.outletId,
       phone: session.phone,
     });
@@ -340,7 +340,7 @@ export const mockOutletManagerApi = {
   },
   async getWorkspace() {
     const session = requireManagerSession();
-    const workspace = await mockApi.getManagerWorkspace({
+    const workspace = await adminApi.getManagerWorkspace({
       outletId: session.outletId,
       phone: session.phone,
     });
@@ -481,7 +481,7 @@ export const mockOutletManagerApi = {
   },
   async updateOrderStatus(orderId, nextStatus) {
     const session = requireManagerSession();
-    return mockApi.updateManagerOrderStatus({
+    return adminApi.updateManagerOrderStatus({
       outletId: session.outletId,
       phone: session.phone,
       orderId,
@@ -490,7 +490,7 @@ export const mockOutletManagerApi = {
   },
   async overrideEta(orderId, payload) {
     const session = requireManagerSession();
-    return mockApi.overrideManagerOrderEta({
+    return adminApi.overrideManagerOrderEta({
       outletId: session.outletId,
       phone: session.phone,
       orderId,
@@ -499,7 +499,7 @@ export const mockOutletManagerApi = {
   },
   async updateAvailability(itemId, payload) {
     const session = requireManagerSession();
-    return mockApi.updateManagerMenuAvailability({
+    return adminApi.updateManagerMenuAvailability({
       outletId: session.outletId,
       phone: session.phone,
       itemId,

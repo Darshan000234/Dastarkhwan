@@ -8,7 +8,7 @@ import {
   UserRound,
   CalendarDays,
 } from "lucide-react";
-import { mockApi } from "../../../services/mockApi";
+import { adminApi } from "../../../services/adminApi.js";
 import { PageHeader, StatusBadge } from "../common/AdminUI";
 import OutletFormModal from "./OutletFormModal";
 import ManagerAssignmentModal from "./ManagerAssignmentModal";
@@ -32,7 +32,7 @@ export default function OutletDetailsPage() {
 
   const refresh = useCallback(async () => {
     setError("");
-    const next = await mockApi.getOutletById(outletId);
+    const next = await adminApi.getOutletById(outletId);
     setOutlet(next);
     return next;
   }, [outletId]);
@@ -40,7 +40,7 @@ export default function OutletDetailsPage() {
   useEffect(() => {
     let mounted = true;
     setLoading(true);
-    mockApi
+    adminApi
       .getOutletById(outletId)
       .then((next) => {
         if (mounted) setOutlet(next);
@@ -64,12 +64,12 @@ export default function OutletDetailsPage() {
       )
     )
       return;
-    await mockApi.updateOutletStatus(outlet.id, nextActive);
+    await adminApi.updateOutletStatus(outlet.id, nextActive);
     await refresh();
   };
 
   const saveEdit = async (payload) => {
-    await mockApi.updateOutlet(outlet.id, payload);
+    await adminApi.updateOutlet(outlet.id, payload);
     await refresh();
     setNotice("Outlet information updated.");
   };

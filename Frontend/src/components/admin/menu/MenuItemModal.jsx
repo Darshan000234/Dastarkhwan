@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { ImagePlus } from "lucide-react";
 import { Field, Modal } from "../common/AdminUI";
-import { mockApi } from "../../../services/mockApi";
+import { adminApi } from "../../../services/adminApi.js";
 
 const EMPTY = {
   name: "",
@@ -106,8 +106,8 @@ export default function MenuItemModal({ open, item, onClose, onSaved }) {
     };
     setBusy(true);
     try {
-      if (item) await mockApi.updateMenuItem(item.id, payload);
-      else await mockApi.createMenuItem(payload);
+      if (item) await adminApi.updateMenuItem(item.id, payload);
+      else await adminApi.createMenuItem(payload);
       await onSaved();
       onClose();
     } catch (err) {

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Outlet, useLocation, useNavigate, Link } from "react-router-dom";
 import AdminSidebar from "./AdminSidebar";
 import AdminTopbar from "./AdminTopbar";
-import { mockApi } from "../../../services/mockApi";
+import { adminApi } from "../../../services/adminApi.js";
 
 export default function AdminLayout() {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -13,7 +13,7 @@ export default function AdminLayout() {
 
   useEffect(() => {
     let mounted = true;
-    mockApi.getAdminOverview().then((data) => {
+    adminApi.getAdminOverview().then((data) => {
       if (!mounted) return;
       setAttentionCount(
         data.lateOrders.length +
@@ -35,7 +35,7 @@ export default function AdminLayout() {
       return;
     }
     let mounted = true;
-    mockApi.getOutletById(match[1]).then((outlet) => {
+    adminApi.getOutletById(match[1]).then((outlet) => {
       if (mounted) setOutletName(outlet?.name || "Outlet details");
     });
     return () => {

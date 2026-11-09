@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Plus, Edit3, Power, MapPin, Check } from "lucide-react";
 import { Link } from "react-router-dom";
-import { mockApi } from "../../../services/mockApi";
+import  { adminApi }  from "../../../services/adminApi.js";
 import {
   PageHeader,
   SearchBox,
@@ -44,9 +44,9 @@ export default function MenuManagementPage() {
 
   const refresh = async () => {
     const [catalog, outletRows, schedules] = await Promise.all([
-      mockApi.getMenuCatalog(),
-      mockApi.getOutlets(),
-      mockApi.getTimeMenus(),
+      adminApi.getMenuCatalog(),
+      adminApi.getOutlets(),
+      adminApi.getTimeMenus(),
     ]);
     setItems(catalog);
     setOutlets(outletRows);
@@ -55,9 +55,9 @@ export default function MenuManagementPage() {
   useEffect(() => {
     let mounted = true;
     Promise.all([
-      mockApi.getMenuCatalog(),
-      mockApi.getOutlets(),
-      mockApi.getTimeMenus(),
+      adminApi.getMenuCatalog(),
+      adminApi.getOutlets(),
+      adminApi.getTimeMenus(),
     ])
       .then(([catalog, outletRows, schedules]) => {
         if (mounted) {
@@ -129,7 +129,7 @@ export default function MenuManagementPage() {
     setNotice(editingItem ? "Catalog item updated." : "Catalog item created.");
   };
   const toggleActive = async (item) => {
-    await mockApi.updateMenuItem(item.id, { active: !item.active });
+    await adminApi.updateMenuItem(item.id, { active: !item.active });
     await refresh();
     setNotice(
       `${item.name} is now ${item.active ? "inactive" : "active"} in the central catalog.`,

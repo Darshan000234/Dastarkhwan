@@ -1,4 +1,4 @@
-import { mockApi } from "./mockApi";
+import { adminApi } from "./adminApi";
 import {
   CUSTOMER_STORAGE_KEY,
   seedAddresses,
@@ -56,9 +56,9 @@ const timestampId = (prefix) =>
 async function getOutletMenu(outletId, filters = {}) {
   if (!outletId) return [];
   const [outlet, rows, timeMenus] = await Promise.all([
-    mockApi.getOutletById(outletId),
-    mockApi.getOutletMenu(outletId),
-    mockApi.getTimeMenus(),
+    adminApi.getOutletById(outletId),
+    adminApi.getOutletMenu(outletId),
+    adminApi.getTimeMenus(),
   ]);
   if (!outlet || !outlet.active) return [];
   const now = new Date();
@@ -138,7 +138,7 @@ async function validateCart(cart, outletId) {
   const errors = [];
   if (!Array.isArray(cart) || cart.length === 0)
     return { valid: false, errors: ["Your cart is empty."], validLines: [] };
-  const outlet = await mockApi.getOutletById(outletId);
+  const outlet = await adminApi.getOutletById(outletId);
   if (!outlet || !outlet.active)
     return {
       valid: false,
@@ -300,10 +300,10 @@ export const mockCustomerApi = {
       /* demo can run without session storage */
     }
     const [outlets, catalog, orders, settings] = await Promise.all([
-      mockApi.getOutlets(),
-      mockApi.getMenuCatalog(),
-      mockApi.getOrders(),
-      mockApi.getSettings(),
+      adminApi.getOutlets(),
+      adminApi.getMenuCatalog(),
+      adminApi.getOrders(),
+      adminApi.getSettings(),
     ]);
     return clone({
       ...customerState,
@@ -436,7 +436,7 @@ export const mockCustomerApi = {
       (sum, line) => sum + line.unitPrice * line.quantity,
       0,
     );
-    const [orders] = await Promise.all([mockApi.getOrders()]);
+    const [orders] = await Promise.all([adminApi.getOrders()]);
     const customerOrders = orders.filter(
       (order) =>
         (order.phone === customerState.profile.phone ||
@@ -573,7 +573,7 @@ export const mockCustomerApi = {
         throw new Error(
           "The payment amount no longer matches the current order total. Return to checkout and retry.",
         );
-      const order = await mockApi.createCustomerOrder({
+      const order = await adminApi.createCustomerOrder({
         outletId: payload.outletId,
         customer: customerState.profile,
         address: payload.address,
@@ -626,7 +626,7 @@ export const mockCustomerApi = {
     }
   },
   async getCustomerOrders() {
-    const orders = await mockApi.getOrders();
+    const orders = await adminApi.getOrders();
     return orders
       .filter(
         (order) =>
@@ -636,10 +636,10 @@ export const mockCustomerApi = {
       .sort((a, b) => new Date(b.placedAt) - new Date(a.placedAt));
   },
   async getOrderById(orderId) {
-    return mockApi.getCustomerOrder(orderId);
+    return adminApi.getCustomerOrder(orderId);
   },
   async simulateNextStatus(orderId) {
-    const order = await mockApi.getCustomerOrder(orderId);
+    const order = await adminApi.getCustomerOrder(orderId);
     if (!order) throw new Error("Order not found.");
     const next = {
       Placed: "ACCEPTED",
@@ -648,7 +648,7 @@ export const mockCustomerApi = {
       Ready: "HANDED_OFF",
     }[order.status];
     if (!next) return order;
-    const updated = await mockApi.updateCustomerOrderStatus(orderId, next);
+    const updated = await adminApi.updateCustomerOrderStatus(orderId, next);
     if (
       next === "HANDED_OFF" &&
       !customerState.loyalty.awardedOrderIds.includes(orderId)
@@ -668,7 +668,7 @@ export const mockCustomerApi = {
     return updated;
   },
   async reorder(orderId, currentOutletId) {
-    const order = await mockApi.getCustomerOrder(orderId);
+    const order = await adminApi.getCustomerOrder(orderId);
     if (!order) throw new Error("Order not found.");
     if (order.outletId !== currentOutletId)
       throw new Error(

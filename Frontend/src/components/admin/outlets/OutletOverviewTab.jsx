@@ -7,7 +7,7 @@ import {
   UsersRound,
   AlertTriangle,
 } from "lucide-react";
-import { mockApi } from "../../../services/mockApi";
+import { adminApi } from "../../../services/adminApi.js";
 import { MetricCard, StatusBadge, money } from "../common/AdminUI";
 import { BarChart, DonutChart } from "../common/Charts";
 
@@ -15,7 +15,7 @@ export default function OutletOverviewTab({ outlet }) {
   const [analytics, setAnalytics] = useState(null);
   useEffect(() => {
     let mounted = true;
-    mockApi.getOutletAnalytics(outlet.id).then((data) => {
+    adminApi.getOutletAnalytics(outlet.id).then((data) => {
       if (mounted) setAnalytics(data);
     });
     return () => {
