@@ -107,8 +107,18 @@ export default function OrderTrackingPage() {
     const refreshIfCurrentOrder = (payload) => {
       if (!active) return;
 
-      if (payload?.orderId !== orderId) return;
+      const currentOrderKey = String(orderId);
 
+      const matchesCurrentOrder = [payload?.orderId, payload?.orderNumber].some(
+        (eventOrderId) =>
+          eventOrderId !== undefined &&
+          eventOrderId !== null &&
+          String(eventOrderId) === currentOrderKey,
+      );
+
+      if (!matchesCurrentOrder) return;
+
+      // Fetch authoritative order, tracking and timeline data.
       load();
     };
 
