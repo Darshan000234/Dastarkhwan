@@ -51,10 +51,8 @@ function App() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* Public homepage */}
         <Route path="/" element={<HomeDashboard />} />
 
-        {/* Public authentication routes */}
         <Route path="/auth" element={<SignupLogin />} />
 
         <Route
@@ -72,7 +70,6 @@ function App() {
           element={<SignupLogin initialMode="staff" />}
         />
 
-        {/* Legacy customer entry routes */}
         <Route
           path="/order"
           element={<CustomerLegacyRedirect />}
@@ -90,17 +87,13 @@ function App() {
           }
         />
 
-        {/* Customer routes */}
+        {/* Menu is public. Customer-only routes are guarded
+            inside CustomerDashboard. */}
         <Route
           path="/customer/*"
-          element={
-            <RoleGate role="customer">
-              <CustomerDashboard />
-            </RoleGate>
-          }
+          element={<CustomerDashboard />}
         />
 
-        {/* Central Admin routes */}
         <Route
           path="/admin/*"
           element={
@@ -110,13 +103,11 @@ function App() {
           }
         />
 
-        {/* Legacy outlet-manager route */}
         <Route
           path="/outlet/*"
           element={<LegacyOutletRedirect />}
         />
 
-        {/* Outlet Manager routes */}
         <Route
           path="/manager/*"
           element={

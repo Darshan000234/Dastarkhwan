@@ -1,5 +1,5 @@
 import { Navigate, useLocation } from "react-router-dom";
-import { useAuth } from "../context/AuthContext.jsx";
+import { useAuth } from "../context/authContext.jsx";
 
 const ROLE_HOME = {
   customer: "/customer",
@@ -44,9 +44,12 @@ export default function RoleGate({ role, children }) {
   }
 
   if (user.role !== role) {
-    const destination = ROLE_HOME[user.role] || "/auth";
-
-    return <Navigate to={destination} replace />;
+    return (
+      <Navigate
+        to={ROLE_HOME[user.role] || "/auth"}
+        replace
+      />
+    );
   }
 
   return children;

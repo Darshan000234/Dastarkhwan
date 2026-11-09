@@ -7,173 +7,333 @@ import {
   MapPin,
   RefreshCw,
   ShieldCheck,
+  AlertCircle,
 } from "lucide-react";
-import { mockCustomerApi } from "../../../services/mockCustomerApi";
+
+import customerApi from "../../../services/customerApi";
 import { currency } from "../../../utils/customerPricing";
 import { OrderStatusBadge } from "../common/Badges";
 import OrderTimeline from "./OrderTimeline";
 import EmptyState from "../common/EmptyState";
 
+function formatDate(value) {
+  if (!value) return "—";
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) return "—";
+
+  return date.toLocaleDateString("en-IN", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function formatTime(value) {
+  if (!value) return "—";
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) return "—";
+
+  return date.toLocaleTimeString("en-IN", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 export default function OrderTrackingPage() {
   const { orderId } = useParams();
+
   const [order, setOrder] = useState(null);
+  const [tracking, setTracking] = useState(null);
+  const [timeline, setTimeline] = useState([]);
+
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
   const load = useCallback(async () => {
-    setLoading(true);
+    setError("");
+    setBusy(true);
+
     try {
-      setOrder(await mockCustomerApi.getOrderById(orderId));
+      const [orderResult, trackingResult, timelineResult] =
+        await Promise.all([
+          customerApi.getOrder(orderId),
+          customerApi.getOrderTracking(orderId),
+          customerApi.getOrderTimeline(orderId),
+        ]);
+
+      if (!orderResult) {
+        throw new Error("The backend did not return this order.");
+      }
+
+      setOrder(orderResult);
+      setTracking(trackingResult);
+
+      /*
+       * OrderTimeline expects:
+       * [{ label: "Placed", time: "..." }]
+       *
+       * The backend timeline returns:
+       * [{ description, toStatus, timestamp }]
+       */
+      const mappedTimeline = (timelineResult.timeline || [])
+        .filter((event) => event.toStatus || event.description)
+        .map((event) => ({
+          label: event.toStatus || event.description,
+          time: event.timestamp,
+          at: event.timestamp,
+          note: event.description,
+        }));
+
+      setTimeline(mappedTimeline);
+    } catch (err) {
+      setError(err.message || "Unable to load this order.");
+      setOrder(null);
+      setTracking(null);
+      setTimeline([]);
     } finally {
+      setBusy(false);
       setLoading(false);
     }
   }, [orderId]);
+
   useEffect(() => {
     load();
   }, [load]);
-  const progress = async () => {
-    setBusy(true);
-    try {
-      setOrder(await mockCustomerApi.simulateNextStatus(orderId));
-    } catch (error) {
-      /* page can recover by reloading order */
-    } finally {
-      setBusy(false);
-    }
-  };
-  if (loading)
+
+  if (loading) {
     return (
       <div className="cu-page">
         <div className="cu-loading-card cu-order-loading" />
       </div>
     );
-  if (!order)
+  }
+
+  if (!order) {
     return (
       <div className="cu-page">
         <EmptyState
           title="We couldn't find this order"
-          description="The order may have been reset from demo data."
+          description={
+            error ||
+            "The order may not exist or may belong to another customer account."
+          }
           action="Back to menu"
-          onAction={() => window.location.assign("/customer")}
+          onAction={() => {
+            window.location.assign("/customer");
+          }}
         />
+
+        <div className="cu-order-refresh">
+          <button
+            className="cu-button-secondary"
+            disabled={busy}
+            onClick={load}
+          >
+            <RefreshCw size={15} /> Try again
+          </button>
+        </div>
       </div>
     );
-  const placedAt = new Date(order.placedAt);
-  const promisedAt = order.promisedAt ? new Date(order.promisedAt) : null;
+  }
+
+  const placedAt = order.placedAt ? new Date(order.placedAt) : null;
+
+  const promisedAt =
+    tracking?.promisedAt || order.promisedAt || null;
+
+  const cancelled = order.status === "Cancelled";
+  const handedOff = order.status === "Handed Off";
+
+  const timelineOrder = {
+    ...order,
+    timeline,
+  };
+
   return (
     <div className="cu-page cu-order-page">
       <Link to="/customer/orders" className="cu-back-link">
         <ArrowLeft size={15} /> My orders
       </Link>
+
       <div className="cu-order-success">
-        <span className="cu-success-check">✓</span>
+        <span className="cu-success-check">
+          {cancelled ? "!" : "✓"}
+        </span>
+
         <div>
           <span className="cu-eyebrow">
             {order.paymentStatus === "Succeeded"
               ? "ORDER CONFIRMED"
-              : "ORDER UPDATE"}
+              : cancelled
+                ? "ORDER CANCELLED"
+                : "ORDER UPDATE"}
           </span>
+
           <h1>
-            {order.paymentStatus === "Succeeded"
-              ? "Your meal is on its way."
-              : "Your order details"}
+            {cancelled
+              ? "This order was cancelled."
+              : handedOff
+                ? "Your order has been handed off."
+                : order.paymentStatus === "Succeeded"
+                  ? "Your meal is being prepared."
+                  : "Your order details"}
           </h1>
+
           <p>
-            Order <strong>{order.id}</strong> · Demo payment{" "}
-            {order.paymentStatus?.toLowerCase()}
+            Order <strong>{order.id}</strong> · Payment{" "}
+            {String(order.paymentStatus || "Unknown").toLowerCase()}
           </p>
         </div>
+
         <OrderStatusBadge status={order.status} />
       </div>
+
       <div className="cu-order-layout">
         <section className="cu-order-card">
           <div className="cu-order-card-head">
             <div>
               <span className="cu-eyebrow">ORDER PROGRESS</span>
               <h2>Kitchen updates</h2>
-              <p>Simulated status updates for this frontend demo.</p>
+              <p>Order progress recorded by the backend.</p>
             </div>
+
             <span className="cu-live-demo">
-              <i /> DEMO LIVE UPDATES
+              <i /> BACKEND STATUS
             </span>
           </div>
-          <OrderTimeline order={order} />
+
+          <OrderTimeline order={timelineOrder} />
+
+          {cancelled && (
+            <div className="cu-payment-error">
+              <AlertCircle size={17} />
+              <span>
+                This order is cancelled. No further kitchen progress is
+                expected.
+              </span>
+            </div>
+          )}
+
           <div className="cu-order-eta">
             <span>
               <Clock3 size={17} /> Estimated preparation
             </span>
-            <strong>{order.prepMinutes || 25} min</strong>
+
+            <strong>
+              {tracking?.estimatedPrepMinutes ??
+                order.prepMinutes ??
+                "—"}{" "}
+              {tracking?.estimatedPrepMinutes || order.prepMinutes
+                ? "min"
+                : ""}
+            </strong>
+
             <small>
-              {promisedAt
-                ? `Promised around ${promisedAt.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}`
-                : "Estimate provided by mock service"}
+              {tracking?.isLate
+                ? `Delayed by ${tracking.delayMinutes} minutes`
+                : tracking?.remainingMinutes > 0
+                  ? `${tracking.remainingMinutes} minutes remaining`
+                  : promisedAt
+                    ? `Promised around ${formatTime(promisedAt)}`
+                    : "The outlet has not provided an ETA."}
             </small>
           </div>
-          {order.status !== "Handed Off" && order.status !== "Cancelled" && (
-            <button
-              className="cu-button cu-button-wide"
-              disabled={busy}
-              onClick={progress}
-            >
-              {busy ? "Updating…" : "Simulate next kitchen update"}{" "}
-              <RefreshCw size={15} />
-            </button>
+
+          {tracking?.isLate && (
+            <div className="cu-inline-warning">
+              Your order is running later than its current promised time.
+            </div>
           )}
+
+          <button
+            className="cu-button cu-button-wide"
+            disabled={busy}
+            onClick={load}
+          >
+            {busy ? "Refreshing…" : "Refresh order status"}{" "}
+            <RefreshCw size={15} />
+          </button>
+
           <small className="cu-demo-caption">
-            These transitions are simulated and persisted in the browser. They
-            are not live kitchen or delivery updates.
+            Status and timeline are retrieved from the backend. This page
+            does not simulate kitchen transitions.
           </small>
+
+          {error && <p className="cu-form-error">{error}</p>}
         </section>
+
         <aside className="cu-order-card cu-order-summary">
           <span className="cu-eyebrow">ORDER SUMMARY</span>
-          <h2>{order.outletSnapshot?.name || "Dastarkhwan outlet"}</h2>
+
+          <h2>
+            {order.outletSnapshot?.name || tracking?.outlet?.name || "Dastarkhwan outlet"}
+          </h2>
+
           <p>
-            <MapPin size={14} /> {order.address?.house || "Delivery address"},{" "}
-            {order.address?.street || ""}, {order.address?.pincode || ""}
+            <MapPin size={14} />{" "}
+            {order.address?.house || "Delivery address"},{" "}
+            {order.address?.street || ""},{" "}
+            {order.address?.pincode || ""}
           </p>
+
           <div className="cu-order-items-list">
             {(order.items || []).map((item, index) => (
-              <div key={`${item.name}-${index}`}>
+              <div key={`${item.itemId || item.name}-${index}`}>
                 <span>
                   <strong>{item.name}</strong>
                   <small>
                     {item.portion || "Regular"} × {item.qty}
+                    {item.addons?.length
+                      ? ` · ${item.addons.map((addon) => addon.name).join(", ")}`
+                      : ""}
                   </small>
                 </span>
-                <b>{currency(item.price * item.qty)}</b>
+
+                <b>
+                  {currency(
+                    Number(item.lineTotal ?? item.price * item.qty ?? 0),
+                  )}
+                </b>
               </div>
             ))}
           </div>
+
           <div className="cu-order-total">
-            <span>Total paid</span>
+            <span>Total</span>
             <strong>{currency(order.amount)}</strong>
           </div>
+
           <div className="cu-order-payment">
             <span>Payment</span>
             <strong>
-              {order.paymentMethod} · {order.paymentStatus}
+              {order.paymentMethod || "—"} · {order.paymentStatus || "—"}
             </strong>
           </div>
+
           <div className="cu-payment-safe">
-            <ShieldCheck size={15} /> Demo payment reference:{" "}
-            {order.paymentReference || "Seeded order"}
+            <ShieldCheck size={15} /> Payment reference:{" "}
+            {order.paymentReference || "Not available"}
           </div>
+
           <Link className="cu-text-link" to="/customer">
             Order more food <ArrowRight size={14} />
           </Link>
         </aside>
       </div>
+
       <div className="cu-order-time-note">
-        Placed{" "}
-        {placedAt.toLocaleDateString("en-IN", {
-          day: "numeric",
-          month: "short",
-          year: "numeric",
-        })}{" "}
-        at{" "}
-        {placedAt.toLocaleTimeString("en-IN", {
-          hour: "2-digit",
-          minute: "2-digit",
-        })}
+        Placed {formatDate(order.placedAt)}
+        {placedAt
+          ? ` at ${placedAt.toLocaleTimeString("en-IN", {
+              hour: "2-digit",
+              minute: "2-digit",
+            })}`
+          : ""}
       </div>
     </div>
   );

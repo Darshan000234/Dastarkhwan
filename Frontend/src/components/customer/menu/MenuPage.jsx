@@ -5,12 +5,13 @@ import {
   Clock3,
   MapPin,
   Search,
-  SlidersHorizontal,
   Utensils,
 } from "lucide-react";
+
 import { useCustomer } from "../../../context/CustomerContext";
-import { mockCustomerApi } from "../../../services/mockCustomerApi";
+import customerApi from "../../../services/customerApi";
 import { currency } from "../../../utils/customerPricing";
+
 import FoodCard from "./FoodCard";
 import FoodDetailsModal from "./FoodDetailsModal";
 import FoodImage from "../common/FoodImage";
@@ -24,137 +25,252 @@ export default function MenuPage() {
     requestLocation,
     notify,
   } = useCustomer();
+
   const [menu, setMenu] = useState([]);
   const [popular, setPopular] = useState([]);
   const [categories, setCategories] = useState(["All"]);
   const [category, setCategory] = useState("All");
   const [search, setSearch] = useState("");
   const [foodType, setFoodType] = useState("all");
+
   const [selectedItem, setSelectedItem] = useState(null);
-  const [loading, setLoading] = useState(false);
+
+  const [loadedKey, setLoadedKey] = useState("");
+  const [menuError, setMenuError] = useState("");
+
   const [pincode, setPincode] = useState(selectedPincode || "");
   const [pincodeError, setPincodeError] = useState("");
+
   const [searchParams, setSearchParams] = useSearchParams();
+
   const searchRef = useRef(null);
-  const outlet = outlets.find((entry) => entry.id === selectedOutletId);
+
+  const outlet = outlets.find(
+    (entry) => entry.id === selectedOutletId,
+  );
+
+  const requestKey = `${selectedPincode}:${selectedOutletId}`;
+
+  const loading = Boolean(
+    selectedOutletId && loadedKey !== requestKey,
+  );
+
+  /* ======================================================
+     LOAD ACTUAL OUTLET MENU
+  ====================================================== */
 
   useEffect(() => {
+    if (!selectedOutletId || !selectedPincode) return undefined;
+
     let active = true;
-    if (!selectedOutletId) {
-      setMenu([]);
-      setPopular([]);
-      return undefined;
-    }
-    setLoading(true);
+
+    const params = {
+      pincode: selectedPincode,
+      outletId: selectedOutletId,
+      page: 1,
+      limit: 100,
+      availability: "all",
+    };
+
     Promise.all([
-      mockCustomerApi.getOutletMenu(selectedOutletId),
-      mockCustomerApi.getFoodCategories(selectedOutletId),
-      mockCustomerApi.getPopularItems(selectedOutletId),
+      customerApi.getMenu(params),
+      customerApi.getCategories({
+        pincode: selectedPincode,
+        outletId: selectedOutletId,
+      }),
+      customerApi.getPopularItems({
+        pincode: selectedPincode,
+        outletId: selectedOutletId,
+        page: 1,
+        limit: 20,
+      }),
     ])
-      .then(([rows, cats, popularRows]) => {
-        if (active) {
-          setMenu(rows);
-          setCategories(cats);
-          setPopular(popularRows);
-        }
+      .then(([menuData, categoryData, popularData]) => {
+        if (!active) return;
+
+        setMenu(menuData.items || []);
+        setCategories(categoryData.categories || ["All"]);
+        setPopular(popularData.items || []);
+        setMenuError("");
+        setLoadedKey(requestKey);
       })
-      .catch((error) =>
-        notify(error.message || "Unable to load this outlet menu.", "error"),
-      )
-      .finally(() => {
-        if (active) setLoading(false);
+      .catch((error) => {
+        if (!active) return;
+
+        setMenuError(error.message || "Unable to load this outlet menu.");
+        notify(
+          error.message || "Unable to load this outlet menu.",
+          "error",
+        );
+        setLoadedKey(requestKey);
       });
+
     return () => {
       active = false;
     };
-  }, [selectedOutletId, notify]);
+  }, [
+    selectedOutletId,
+    selectedPincode,
+    requestKey,
+    notify,
+  ]);
 
   useEffect(() => {
     setPincode(selectedPincode || "");
   }, [selectedPincode]);
+
+  /* ======================================================
+     SEARCH PARAMS AND LOCATION SHORTCUT
+  ====================================================== */
+
   useEffect(() => {
     if (searchParams.get("focusSearch") === "1") {
       searchRef.current?.focus();
       setSearchParams({}, { replace: true });
     }
+
     const incoming = searchParams.get("pincode");
-    if (incoming && incoming !== selectedPincode)
+
+    if (incoming && incoming !== selectedPincode) {
       requestLocation(incoming).then((result) => {
-        if (result?.serviceable && result.outlets?.length > 1)
-          window.dispatchEvent(new Event("dastarkhwan:open-location"));
+        if (result?.serviceable && result.outlets?.length > 1) {
+          window.dispatchEvent(
+            new Event("dastarkhwan:open-location"),
+          );
+        }
       });
-  }, [searchParams, selectedPincode, requestLocation, setSearchParams]);
+    }
+  }, [
+    searchParams,
+    selectedPincode,
+    requestLocation,
+    setSearchParams,
+  ]);
 
   const filtered = useMemo(
     () =>
       menu.filter((item) => {
         const matchesCategory =
           category === "All" || item.category === category;
+
         const query = search.trim().toLowerCase();
+
         const matchesSearch =
           !query ||
-          `${item.name} ${item.description} ${item.category}`
+          `${item.name} ${item.description || ""} ${item.category || ""}`
             .toLowerCase()
             .includes(query);
+
         const matchesType =
-          foodType === "all" || (foodType === "veg" ? item.veg : !item.veg);
-        return matchesCategory && matchesSearch && matchesType;
+          foodType === "all" ||
+          (foodType === "veg" ? item.veg : !item.veg);
+
+        return (
+          matchesCategory &&
+          matchesSearch &&
+          matchesType
+        );
       }),
     [menu, category, search, foodType],
   );
 
   const submitPincode = async (event) => {
     event.preventDefault();
+
     setPincodeError("");
+
     if (!/^[1-9]\d{5}$/.test(pincode)) {
       setPincodeError("Enter a valid six-digit pincode.");
       return;
     }
+
     const result = await requestLocation(pincode);
-    if (!result.serviceable) setPincodeError(result.reason);
-    else if (result.outlets?.length > 1)
-      window.dispatchEvent(new Event("dastarkhwan:open-location"));
+
+    if (!result.serviceable) {
+      setPincodeError(
+        result.reason || "No active outlet serves this pincode.",
+      );
+
+      return;
+    }
+
+    if (result.outlets?.length > 1) {
+      window.dispatchEvent(
+        new Event("dastarkhwan:open-location"),
+      );
+    }
   };
 
-  if (!outlet)
+  const openItemDetails = async (item) => {
+    try {
+      const result = await customerApi.getMenuItem(item.id, {
+        pincode: selectedPincode,
+        outletId: selectedOutletId,
+      });
+
+      setSelectedItem(result.item);
+    } catch (error) {
+      notify(
+        error.message || "Unable to load this dish's details.",
+        "error",
+      );
+    }
+  };
+
+  if (!outlet) {
     return (
       <div className="cu-page cu-no-location">
         <section className="cu-location-hero">
-          <span className="cu-eyebrow">FRESH FROM OUR HYDERABADI KITCHEN</span>
+          <span className="cu-eyebrow">
+            FRESH FROM OUR HYDERABADI KITCHEN
+          </span>
+
           <h1>
             First, where should
             <br />
             we deliver?
           </h1>
+
           <p>
-            Your pincode helps us show the kitchen, dishes and delivery options
-            available for your address.
+            Your pincode helps us show the kitchen, dishes and
+            delivery options available for your address.
           </p>
+
           <form
             className="cu-pincode-form cu-pincode-large"
             onSubmit={submitPincode}
           >
-            <label htmlFor="cu-home-pincode">Delivery pincode</label>
+            <label htmlFor="cu-home-pincode">
+              Delivery pincode
+            </label>
+
             <div>
               <input
                 id="cu-home-pincode"
                 value={pincode}
                 onChange={(event) =>
-                  setPincode(event.target.value.replace(/\D/g, ""))
+                  setPincode(
+                    event.target.value.replace(/\D/g, ""),
+                  )
                 }
                 maxLength={6}
                 inputMode="numeric"
                 placeholder="Enter 6-digit pincode"
               />
-              <button className="cu-button">Check availability</button>
+
+              <button className="cu-button">
+                Check availability
+              </button>
             </div>
           </form>
-          {pincodeError && <p className="cu-form-error">{pincodeError}</p>}
-          <small className="cu-demo-note">
-            Demo areas: 500084 Kondapur · 500032 Gachibowli · 500072 Kukatpally
-            (only when activated by admin).
-          </small>
+
+          {pincodeError && (
+            <p className="cu-form-error">
+              {pincodeError}
+            </p>
+          )}
         </section>
+
         <div className="cu-location-photo">
           <FoodImage
             src="https://images.unsplash.com/photo-1563379091339-03b21ab4a4f8?w=1200"
@@ -163,43 +279,65 @@ export default function MenuPage() {
         </div>
       </div>
     );
+  }
 
   return (
     <div className="cu-page cu-menu-page">
       <section className="cu-outlet-strip">
         <div className="cu-outlet-heading">
           <span
-            className={`cu-outlet-status ${outlet.active ? "" : "is-closed"}`}
+            className={`cu-outlet-status ${
+              outlet.active ? "" : "is-closed"
+            }`}
           >
-            <i /> {outlet.active ? "ACCEPTING ORDERS" : "NOT ACCEPTING ORDERS"}
+            <i />
+            {outlet.active
+              ? "ACCEPTING ORDERS"
+              : "NOT ACCEPTING ORDERS"}
           </span>
+
           <h1>{outlet.name}</h1>
+
           <p>
-            <MapPin size={14} /> {outlet.address} <span>·</span> Delivering to{" "}
-            {selectedPincode}
+            <MapPin size={14} /> {outlet.address}
+            <span>·</span>
+            Delivering to {selectedPincode}
           </p>
         </div>
+
         <div className="cu-outlet-time">
           <span>
-            <Clock3 size={15} /> {outlet.prepTime} min preparation
+            <Clock3 size={15} />
+            {outlet.prepTime} min preparation
           </span>
+
           <button
             onClick={() =>
-              window.dispatchEvent(new Event("dastarkhwan:open-location"))
+              window.dispatchEvent(
+                new Event("dastarkhwan:open-location"),
+              )
             }
           >
             Change location
           </button>
         </div>
       </section>
+
       <section className="cu-menu-hero">
         <div className="cu-menu-hero-copy">
-          <span className="cu-eyebrow">THE HYDERABADI TABLE</span>
-          <h2>Authentic Hyderabad flavours, delivered to your table.</h2>
+          <span className="cu-eyebrow">
+            THE HYDERABADI TABLE
+          </span>
+
+          <h2>
+            Authentic Hyderabad flavours, delivered to your table.
+          </h2>
+
           <p>
-            Slow-cooked biryanis, familiar favourites and something sweet to
-            finish.
+            Slow-cooked biryanis, familiar favourites and
+            something sweet to finish.
           </p>
+
           <button
             className="cu-button"
             onClick={() =>
@@ -211,6 +349,7 @@ export default function MenuPage() {
             Explore the menu <ArrowDown size={15} />
           </button>
         </div>
+
         <div className="cu-menu-hero-image">
           <FoodImage
             src="https://images.unsplash.com/photo-1563379091339-03b21ab4a4f8?w=1200"
@@ -219,23 +358,32 @@ export default function MenuPage() {
           />
         </div>
       </section>
+
       {popular.length > 0 && (
         <section className="cu-popular-section">
           <div className="cu-section-heading">
             <div>
-              <span className="cu-eyebrow">A GOOD PLACE TO START</span>
+              <span className="cu-eyebrow">
+                A GOOD PLACE TO START
+              </span>
               <h2>Customer favourites</h2>
             </div>
+
             <span>From {outlet.name}</span>
           </div>
+
           <div className="cu-popular-row">
             {popular.slice(0, 4).map((item) => (
               <button
                 key={item.id}
                 className="cu-popular-item"
-                onClick={() => setSelectedItem(item)}
+                onClick={() => openItemDetails(item)}
               >
-                <FoodImage src={item.image} alt={item.name} />
+                <FoodImage
+                  src={item.image}
+                  alt={item.name}
+                />
+
                 <span>
                   <strong>{item.name}</strong>
                   <small>{currency(item.effectivePrice)}</small>
@@ -245,17 +393,28 @@ export default function MenuPage() {
           </div>
         </section>
       )}
-      <section className="cu-catalog-section" id="cu-menu-catalog">
+
+      <section
+        className="cu-catalog-section"
+        id="cu-menu-catalog"
+      >
         <div className="cu-section-heading">
           <div>
-            <span className="cu-eyebrow">COOKED FRESH, ORDERED EASY</span>
+            <span className="cu-eyebrow">
+              COOKED FRESH, ORDERED EASY
+            </span>
             <h2>Explore the menu</h2>
           </div>
-          <span>{menu.length} dishes assigned to this kitchen</span>
+
+          <span>
+            {menu.length} dishes assigned to this kitchen
+          </span>
         </div>
+
         <div className="cu-menu-toolbar">
           <div className="cu-search-field">
             <Search size={17} />
+
             <input
               ref={searchRef}
               value={search}
@@ -263,27 +422,24 @@ export default function MenuPage() {
               placeholder="Search biryani, starters, desserts…"
             />
           </div>
+
           <div className="cu-filter-pills">
-            <button
-              className={foodType === "all" ? "is-active" : ""}
-              onClick={() => setFoodType("all")}
-            >
-              All
-            </button>
-            <button
-              className={foodType === "veg" ? "is-active" : ""}
-              onClick={() => setFoodType("veg")}
-            >
-              Veg
-            </button>
-            <button
-              className={foodType === "nonveg" ? "is-active" : ""}
-              onClick={() => setFoodType("nonveg")}
-            >
-              Non-veg
-            </button>
+            {["all", "veg", "nonveg"].map((entry) => (
+              <button
+                key={entry}
+                className={foodType === entry ? "is-active" : ""}
+                onClick={() => setFoodType(entry)}
+              >
+                {entry === "all"
+                  ? "All"
+                  : entry === "veg"
+                    ? "Veg"
+                    : "Non-veg"}
+              </button>
+            ))}
           </div>
         </div>
+
         <div className="cu-category-row">
           {categories.map((entry) => (
             <button
@@ -295,6 +451,7 @@ export default function MenuPage() {
             </button>
           ))}
         </div>
+
         {loading ? (
           <div className="cu-loading-grid">
             {Array.from({ length: 6 }, (_, index) => (
@@ -305,13 +462,17 @@ export default function MenuPage() {
               </div>
             ))}
           </div>
+        ) : menuError ? (
+          <div className="cu-inline-warning">
+            {menuError}
+          </div>
         ) : filtered.length ? (
           <div className="cu-food-grid">
             {filtered.map((item) => (
               <FoodCard
                 key={item.id}
                 item={item}
-                onCustomise={setSelectedItem}
+                onCustomise={openItemDetails}
               />
             ))}
           </div>
@@ -328,13 +489,16 @@ export default function MenuPage() {
           />
         )}
       </section>
+
       <section className="cu-menu-footnote">
         <Utensils size={18} />
+
         <span>
-          Every dish is shown only when it is assigned to this outlet. Prices
-          shown are GST-inclusive.
+          Every dish is shown only when it is assigned to this
+          outlet. Prices shown are GST-inclusive.
         </span>
       </section>
+
       {selectedItem && (
         <FoodDetailsModal
           item={selectedItem}
