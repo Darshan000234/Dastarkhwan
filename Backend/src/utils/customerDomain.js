@@ -1184,46 +1184,404 @@ export async function buildCartQuote(
    PREPARATION ESTIMATE
 ========================================================= */
 
-export async function estimatePreparationMinutes(db, outlet, items) {
+
+/* =========================================================
+   PREPARATION TIME PREDICTION
+   KNN historical model + workload fallback
+========================================================= */
+
+const PREP_MODEL_VERSION = "knn-v1";
+const MIN_HISTORY_SAMPLES = 10;
+const K_NEIGHBOURS = 5;
+const HISTORY_DAYS = 90;
+
+// Features are normalized so large numeric values do not
+// dominate the KNN distance calculation.
+const FEATURE_SCALES = {
+  baseItemMinutes: 60,
+  activeOrders: 20,
+  uniqueItems: 10,
+  totalQuantity: 20,
+};
+
+function getHourInIndia(date) {
+  return Number(
+    new Intl.DateTimeFormat("en-IN", {
+      timeZone: "Asia/Kolkata",
+      hour: "2-digit",
+      hourCycle: "h23",
+    }).format(date),
+  );
+}
+
+function getCurrentOrderFeatures(items, activeOrders, now = new Date()) {
+  const uniqueItems = new Set(
+    items.map((item) => item.itemId),
+  );
+
+  const baseItemMinutes = Math.max(
+    0,
+    ...items.map((item) =>
+      Number(item.prepTimeMinutes || 0),
+    ),
+  );
+
+  const totalQuantity = items.reduce(
+    (sum, item) => sum + Number(item.quantity || 0),
+    0,
+  );
+
+  return {
+    baseItemMinutes,
+    activeOrders,
+    uniqueItems: uniqueItems.size,
+    totalQuantity,
+    hourOfDay: getHourInIndia(now),
+  };
+}
+
+function calculateWorkloadFallback(
+  features,
+  minimumPrepMinutes,
+) {
+  const workloadMinutes = Math.min(
+    24,
+    features.activeOrders * 3,
+  );
+
+  const complexityMinutes = Math.max(
+    0,
+    features.uniqueItems - 1,
+  ) * 2;
+
+  const predictedMinutes =
+    features.baseItemMinutes +
+    workloadMinutes +
+    complexityMinutes;
+
+  const minutes = Math.max(
+    Math.ceil(predictedMinutes),
+    minimumPrepMinutes,
+  );
+
+  return {
+    minutes,
+    details: {
+      method: "WORKLOAD_FALLBACK",
+      modelVersion: PREP_MODEL_VERSION,
+      fallbackReason: "INSUFFICIENT_HISTORICAL_DATA",
+      historySamples: 0,
+      baseItemMinutes: features.baseItemMinutes,
+      activeOrders: features.activeOrders,
+      workloadMinutes,
+      complexityMinutes,
+      uniqueItems: features.uniqueItems,
+      totalQuantity: features.totalQuantity,
+      outletMinimumMinutes: minimumPrepMinutes,
+      predictedMinutes,
+    },
+  };
+}
+
+/**
+ * Convert a completed order into a historical training example.
+ *
+ * Historical actual time is measured from order placement
+ * until the kitchen marks the order READY.
+ */
+function buildHistoricalFeature(order) {
+  if (
+    !(order.placedAt instanceof Date) ||
+    !(order.readyAt instanceof Date) ||
+    !Array.isArray(order.items) ||
+    !order.events?.length
+  ) {
+    return null;
+  }
+
+  const actualPrepMinutes =
+    (order.readyAt.getTime() - order.placedAt.getTime()) /
+    60_000;
+
+  // Reject invalid and extreme records.
+  if (
+    !Number.isFinite(actualPrepMinutes) ||
+    actualPrepMinutes < 1 ||
+    actualPrepMinutes > 180
+  ) {
+    return null;
+  }
+
+  const event = order.events[0];
+  const metadata = event?.metadata;
+
+  const estimateDetails = metadata?.estimateDetails;
+
+  // Only train on records that contain the original
+  // workload information needed by this model.
+  if (
+    !estimateDetails ||
+    !Number.isFinite(Number(estimateDetails.baseItemMinutes)) ||
+    !Number.isFinite(Number(estimateDetails.activeOrders))
+  ) {
+    return null;
+  }
+
+  const totalQuantity = order.items.reduce(
+    (sum, item) => sum + Number(item.quantity || 0),
+    0,
+  );
+
+  const uniqueItems = new Set(
+    order.items.map((item) => item.foodItemId).filter(Boolean),
+  );
+
+  if (!totalQuantity || !uniqueItems.size) {
+    return null;
+  }
+
+  return {
+    features: {
+      baseItemMinutes: Number(estimateDetails.baseItemMinutes),
+      activeOrders: Number(estimateDetails.activeOrders),
+      uniqueItems: uniqueItems.size,
+      totalQuantity,
+      hourOfDay: getHourInIndia(order.placedAt),
+    },
+    actualPrepMinutes,
+  };
+}
+
+/**
+ * Circular hour difference:
+ * 23:00 and 00:00 are only one hour apart.
+ */
+function hourDifference(a, b) {
+  const difference = Math.abs(a - b);
+  return Math.min(difference, 24 - difference);
+}
+
+function calculateFeatureDistance(current, historical) {
+  const differences = [
+    (current.baseItemMinutes - historical.baseItemMinutes) /
+      FEATURE_SCALES.baseItemMinutes,
+
+    (current.activeOrders - historical.activeOrders) /
+      FEATURE_SCALES.activeOrders,
+
+    (current.uniqueItems - historical.uniqueItems) /
+      FEATURE_SCALES.uniqueItems,
+
+    (current.totalQuantity - historical.totalQuantity) /
+      FEATURE_SCALES.totalQuantity,
+
+    hourDifference(current.hourOfDay, historical.hourOfDay) / 12,
+  ];
+
+  return Math.sqrt(
+    differences.reduce(
+      (sum, difference) => sum + difference ** 2,
+      0,
+    ),
+  );
+}
+
+/**
+ * K-Nearest Neighbours regression.
+ *
+ * Nearby historical orders receive more weight.
+ */
+export function predictPreparationTimeKnn(
+  currentFeatures,
+  historicalSamples,
+  outletMinimumMinutes,
+) {
+  const nearest = historicalSamples
+    .map((sample) => ({
+      ...sample,
+      distance: calculateFeatureDistance(
+        currentFeatures,
+        sample.features,
+      ),
+    }))
+    .sort((a, b) => a.distance - b.distance)
+    .slice(0, K_NEIGHBOURS);
+
+  if (!nearest.length) {
+    return null;
+  }
+
+  const weightedTotal = nearest.reduce(
+    (sum, sample) => {
+      const weight = 1 / (sample.distance + 0.05);
+
+      return sum + sample.actualPrepMinutes * weight;
+    },
+    0,
+  );
+
+  const totalWeight = nearest.reduce(
+    (sum, sample) =>
+      sum + 1 / (sample.distance + 0.05),
+    0,
+  );
+
+  const predictedMinutes = weightedTotal / totalWeight;
+
+  if (!Number.isFinite(predictedMinutes)) {
+    return null;
+  }
+
+  // Safety boundary: never promise less than the outlet minimum.
+  const minutes = Math.max(
+    Math.ceil(predictedMinutes),
+    outletMinimumMinutes,
+  );
+
+  return {
+    minutes,
+    details: {
+      method: "HISTORICAL_KNN",
+      modelVersion: PREP_MODEL_VERSION,
+      historySamples: historicalSamples.length,
+      nearestSamples: nearest.length,
+      baseItemMinutes: currentFeatures.baseItemMinutes,
+      activeOrders: currentFeatures.activeOrders,
+      uniqueItems: currentFeatures.uniqueItems,
+      totalQuantity: currentFeatures.totalQuantity,
+      hourOfDay: currentFeatures.hourOfDay,
+      outletMinimumMinutes,
+      predictedMinutes: Number(predictedMinutes.toFixed(2)),
+    },
+  };
+}
+
+/**
+ * Main estimator called by checkout.controller.js.
+ *
+ * Uses the same function signature as the previous estimator,
+ * so the existing checkout integration can remain unchanged.
+ */
+export async function estimatePreparationMinutes(
+  db,
+  outlet,
+  items,
+) {
+  const minimumPrepMinutes = Math.max(
+    1,
+    Number(outlet.minimumPrepMinutes || 25),
+  );
+
+  // Only orders still being prepared contribute to workload.
+  // READY orders have finished kitchen preparation.
   const activeOrders = await db.order.count({
     where: {
       outletId: outlet.id,
       paymentStatus: "SUCCEEDED",
       status: {
-        in: ["PLACED", "ACCEPTED", "PREPARING", "READY"],
+        in: ["PLACED", "ACCEPTED", "PREPARING"],
       },
     },
   });
 
-  const baseItemMinutes = Math.max(
-    0,
-    ...items.map((item) => item.prepTimeMinutes || 0),
+  const now = new Date();
+
+  const currentFeatures = getCurrentOrderFeatures(
+    items,
+    activeOrders,
+    now,
   );
 
-  const workloadMinutes = Math.min(24, activeOrders * 3);
+  // Fetch recent completed orders from this outlet only.
+  const historyStart = new Date(
+    now.getTime() - HISTORY_DAYS * 24 * 60 * 60 * 1000,
+  );
 
-  const uniqueItems = new Set(items.map((item) => item.itemId));
-
-  const complexityMinutes = Math.max(0, uniqueItems.size - 1) * 2;
-
-  const predictedMinutes =
-    baseItemMinutes + workloadMinutes + complexityMinutes;
-
-  const minutes = Math.max(predictedMinutes, outlet.minimumPrepMinutes);
-
-  return {
-    minutes,
-    details: {
-      method: "Workload-based demo estimate",
-      baseItemMinutes,
-      activeOrders,
-      workloadMinutes,
-      complexityMinutes,
-      outletMinimumMinutes: outlet.minimumPrepMinutes,
-      predictedMinutes,
+  const historicalOrders = await db.order.findMany({
+    where: {
+      outletId: outlet.id,
+      paymentStatus: "SUCCEEDED",
+      status: {
+        in: ["READY", "HANDED_OFF"],
+      },
+      readyAt: {
+        not: null,
+      },
+      placedAt: {
+        gte: historyStart,
+      },
+      events: {
+        some: {
+          eventType: "CHECKOUT_DRAFT_CREATED",
+        },
+      },
     },
-  };
+    select: {
+      placedAt: true,
+      readyAt: true,
+      items: {
+        select: {
+          foodItemId: true,
+          quantity: true,
+        },
+      },
+      events: {
+        where: {
+          eventType: "CHECKOUT_DRAFT_CREATED",
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
+        take: 1,
+        select: {
+          metadata: true,
+        },
+      },
+    },
+    orderBy: {
+      readyAt: "desc",
+    },
+    take: 100,
+  });
+
+  const historicalSamples = historicalOrders
+    .map(buildHistoricalFeature)
+    .filter(Boolean);
+
+  // Cold-start fallback: the model must not pretend
+  // to have learned from insufficient historical records.
+  if (historicalSamples.length < MIN_HISTORY_SAMPLES) {
+    const fallback = calculateWorkloadFallback(
+      currentFeatures,
+      minimumPrepMinutes,
+    );
+
+    fallback.details.historySamples = historicalSamples.length;
+
+    return fallback;
+  }
+
+  const prediction = predictPreparationTimeKnn(
+    currentFeatures,
+    historicalSamples,
+    minimumPrepMinutes,
+  );
+
+  if (!prediction) {
+    const fallback = calculateWorkloadFallback(
+      currentFeatures,
+      minimumPrepMinutes,
+    );
+
+    fallback.details.fallbackReason = "INVALID_MODEL_PREDICTION";
+    fallback.details.historySamples = historicalSamples.length;
+
+    return fallback;
+  }
+
+  return prediction;
 }
+
 
 /* =========================================================
    CUSTOMER-FACING ORDER MAPPING

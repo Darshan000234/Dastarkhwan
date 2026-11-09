@@ -11,11 +11,18 @@ const SOCKET_ORIGIN = API_BASE_URL.replace(/\/api\/v1$/i, "");
 let socketInstance = null;
 let activeUsers = 0;
 
+
 function createSocket() {
   return io(SOCKET_ORIGIN, {
     autoConnect: false,
+
+    // Send credentials with the initial HTTP polling handshake,
+    // then upgrade to WebSocket.
     withCredentials: true,
-    transports: ["websocket", "polling"],
+
+    transports: ["polling", "websocket"],
+    upgrade: true,
+
     reconnection: true,
     reconnectionAttempts: Infinity,
     reconnectionDelay: 1000,
@@ -23,6 +30,7 @@ function createSocket() {
     timeout: 10000,
   });
 }
+
 
 function getSocket() {
   if (!socketInstance) {

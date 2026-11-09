@@ -2361,7 +2361,7 @@ export const updateOrderStatus = managerController(async (req, res) => {
       
     },
   );
-
+  
   try {
     emitOrderStatusUpdated({
       outletId,

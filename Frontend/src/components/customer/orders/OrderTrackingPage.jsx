@@ -145,10 +145,9 @@ export default function OrderTrackingPage() {
     const refreshIfCurrentOrder = (payload) => {
       if (!active) return;
 
+      // Match either the database ID or public order number.
       const currentOrderKey = String(orderId);
 
-      // URL uses the public WEB order number.
-      // Backend event includes both public and database IDs.
       const matchesCurrentOrder = [payload?.orderId, payload?.orderNumber].some(
         (eventOrderId) =>
           eventOrderId !== undefined &&
@@ -158,34 +157,36 @@ export default function OrderTrackingPage() {
 
       if (!matchesCurrentOrder) return;
 
-      console.info(
-        "[Customer Tracking] Received order status:",
-        payload.status,
-        payload.orderNumber,
-      );
+      const nextStatus = LIVE_STATUS_LABELS[payload.status];
 
-      const nextStatus = LIVE_STATUS_LABELS[payload.status] || payload.status;
+      if (!nextStatus) {
+        console.warn("[Order Tracking] Unknown status:", payload.status);
+        return;
+      }
 
       const eventTime = payload.updatedAt || new Date().toISOString();
 
-      // 1. Update the customer order immediately.
-      // The event is emitted only after the backend transaction succeeds.
-      setOrder((current) =>
-        current
-          ? {
-              ...current,
-              status: nextStatus,
-            }
-          : current,
-      );
+      console.info("[Order Tracking] Live status received:", nextStatus);
 
+      // 1. Update the order directly.
+      setOrder((current) => {
+        if (!current) return current;
+
+        return {
+          ...current,
+          status: nextStatus,
+          ...(payload.updatedAt ? { updatedAt: payload.updatedAt } : {}),
+        };
+      });
+
+      // 2. Update tracking state without an API request.
       setTracking((current) => ({
         ...(current || {}),
         orderId: payload.orderNumber || currentOrderKey,
         status: nextStatus,
       }));
 
-      // 2. Add the new status to the timeline immediately.
+      // 3. Update the timeline immediately.
       setTimeline((current) => {
         const alreadyExists = current.some(
           (event) => event.label === nextStatus && event.at === eventTime,
@@ -204,43 +205,36 @@ export default function OrderTrackingPage() {
         ];
       });
 
-      // 3. Reconcile the complete order details with the backend.
-      // If the database is temporarily unavailable, the status
-      // already received through Socket.IO remains visible.
-      void load();
+      // No HTTP request here.
+      // The socket payload already contains the new status.
+
+      // NO GET REQUEST HERE.
     };
 
     const onConnect = () => {
-  if (!active) return;
+      if (!active) return;
 
-  console.info(
-    "[Customer Tracking] Socket connected:",
-    socket.id
-  );
+      console.info("[Customer Tracking] Socket connected:", socket.id);
 
-  // Run after both the initial connection and reconnect.
-  // This retrieves any status that may have changed
-  // before the customer joined the socket room.
-  void load();
+      // Run after both the initial connection and reconnect.
+      // This retrieves any status that may have changed
+      // before the customer joined the socket room.
 
-  reconnecting = true;
-};
+      reconnecting = true;
+    };
 
-const onDisconnect = (reason) => {
-  reconnecting = true;
+    const onDisconnect = (reason) => {
+      reconnecting = true;
 
-  console.warn(
-    "[Customer Tracking] Socket disconnected:",
-    reason
-  );
-};
+      console.warn("[Customer Tracking] Socket disconnected:", reason);
+    };
 
-const onConnectError = (error) => {
-  console.error(
-    "[Customer Tracking] Socket connection failed:",
-    error.message
-  );
-};
+    const onConnectError = (error) => {
+      console.error(
+        "[Customer Tracking] Socket connection failed:",
+        error.message,
+      );
+    };
 
     socket.on("order:status-updated", refreshIfCurrentOrder);
 

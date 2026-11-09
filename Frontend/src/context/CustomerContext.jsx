@@ -263,6 +263,7 @@ export function CustomerProvider({ children }) {
     logout,
     redirectToLogin,
   ]);
+  
   const refresh = useCallback(async () => {
     const result = await withCustomerAuth(loadCustomerData);
 
@@ -939,59 +940,151 @@ export function CustomerProvider({ children }) {
 
     return result.orders || [];
   }, [withCustomerAuth]);
+  
+  // Apply an order status directly from the Socket.IO payload.
+  const applyOrderStatusUpdate = useCallback((payload) => {
+    const statusLabels = {
+      PLACED: "Placed",
+      ACCEPTED: "Accepted",
+      PREPARING: "Preparing",
+      READY: "Ready",
+      HANDED_OFF: "Handed Off",
+      CANCELLED: "Cancelled",
+    };
+
+    const nextStatus = statusLabels[payload?.status];
+
+    if (!nextStatus) return;
+
+    setOrders((currentOrders) =>
+      currentOrders.map((order) => {
+        const matchesOrder =
+          String(order.orderId) === String(payload.orderId) ||
+          String(order.id) === String(payload.orderNumber);
+
+        if (!matchesOrder) return order;
+
+        return {
+          ...order,
+          status: nextStatus,
+          ...(payload.updatedAt
+            ? { updatedAt: payload.updatedAt }
+            : {}),
+        };
+      })
+    );
+  }, []);
+
+  // ETA events have no status field.
+  // Update preparation time and promised time separately.
+  const applyOrderEtaUpdate = useCallback((payload) => {
+    setOrders((currentOrders) =>
+      currentOrders.map((order) => {
+        const matchesOrder =
+          String(order.orderId) === String(payload.orderId) ||
+          String(order.id) === String(payload.orderNumber);
+
+        if (!matchesOrder) return order;
+
+        return {
+          ...order,
+          ...(Number.isFinite(Number(payload.estimatedPrepMinutes))
+            ? { prepMinutes: Number(payload.estimatedPrepMinutes) }
+            : {}),
+          ...(payload.promisedAt
+            ? { promisedAt: payload.promisedAt }
+            : {}),
+          ...(payload.updatedAt
+            ? { updatedAt: payload.updatedAt }
+            : {}),
+        };
+      })
+    );
+  }, []);
+
+
   useEffect(() => {
     if (authLoading || user?.role !== "customer") {
       return undefined;
     }
 
     let active = true;
-    let reconnecting = false;
 
     const socket = socketClient.connect();
 
+    // Used only after initial connection or reconnection,
+    // to recover updates that may have been missed.
     const refreshCustomerOrders = async () => {
       try {
+        if (!active) return;
+
         await refreshOrders();
       } catch (error) {
         if (active) {
           console.error(
-            "Unable to refresh customer orders after socket event:",
-            error,
+            "Unable to synchronize customer orders:",
+            error
           );
         }
       }
     };
 
-    const onOrderStatusUpdated = () => {
+    const onOrderStatusUpdated = (payload) => {
       if (!active) return;
 
-      refreshCustomerOrders();
+      console.info(
+        "[CustomerContext] Order status received:",
+        payload
+      );
+
+      // No GET request. Update React state directly.
+      applyOrderStatusUpdate(payload);
     };
 
-    const onOrderEtaUpdated = () => {
+    const onOrderEtaUpdated = (payload) => {
       if (!active) return;
 
-      refreshCustomerOrders();
+      console.info(
+        "[CustomerContext] Order ETA received:",
+        payload
+      );
+
+      // No GET request. Update React state directly.
+      applyOrderEtaUpdate(payload);
     };
 
     const onConnect = () => {
       if (!active) return;
 
-      if (reconnecting) {
-        refreshCustomerOrders();
-      }
+      console.info(
+        "[CustomerContext] Socket connected:",
+        socket.id
+      );
 
-      reconnecting = true;
+      // One synchronization on connection/reconnection.
+      // Normal status events do not trigger HTTP requests.
+      void refreshCustomerOrders();
     };
 
-    const onDisconnect = () => {
-      reconnecting = true;
+    const onDisconnect = (reason) => {
+      console.warn(
+        "[CustomerContext] Socket disconnected:",
+        reason
+      );
+    };
+
+    const onConnectError = (error) => {
+      console.error(
+        "[CustomerContext] Socket connection error:",
+        error.message
+      );
     };
 
     socket.on("order:status-updated", onOrderStatusUpdated);
     socket.on("order:eta-updated", onOrderEtaUpdated);
     socket.on("connect", onConnect);
     socket.on("disconnect", onDisconnect);
+    socket.on("connect_error", onConnectError);
 
     return () => {
       active = false;
@@ -1000,10 +1093,19 @@ export function CustomerProvider({ children }) {
       socket.off("order:eta-updated", onOrderEtaUpdated);
       socket.off("connect", onConnect);
       socket.off("disconnect", onDisconnect);
+      socket.off("connect_error", onConnectError);
 
       socketClient.disconnect();
     };
-  }, [authLoading, user?.id, user?.role, refreshOrders]);
+  }, [
+    authLoading,
+    user?.id,
+    user?.role,
+    refreshOrders,
+    applyOrderStatusUpdate,
+    applyOrderEtaUpdate,
+  ]);
+
 
   const refreshLoyalty = useCallback(async () => {
     const [summary, transactionData] = await withCustomerAuth(() =>

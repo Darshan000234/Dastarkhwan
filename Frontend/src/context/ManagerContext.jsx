@@ -321,27 +321,26 @@ export function ManagerProvider({ children }) {
       }
     };
 
-    const onOrderCreated = () => {
+    const onOrderCreated = (payload) => {
+      console.log(payload);
+
       if (!active) return;
 
       refreshKitchenAndOrders();
     };
 
     const onOrderStatusUpdated = () => {
-  if (!active) return;
+      if (!active) return;
 
-  Promise.all([
-    refreshKitchen(),
-    refreshOrders(),
-  ]).catch((error) => {
-    if (active) {
-      console.error(
-        "Unable to refresh manager data after order status update:",
-        error
-      );
-    }
-  });
-};
+      Promise.all([refreshKitchen(), refreshOrders()]).catch((error) => {
+        if (active) {
+          console.error(
+            "Unable to refresh manager data after order status update:",
+            error,
+          );
+        }
+      });
+    };
 
     const onOrderEtaUpdated = () => {
       if (!active) return;

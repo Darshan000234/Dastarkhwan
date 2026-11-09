@@ -38,15 +38,30 @@ function parseCookies(header = "") {
   return cookies;
 }
 
+
 async function authenticateSocket(socket, next) {
   try {
-    const cookies = parseCookies(
-      socket.handshake.headers.cookie || "",
-    );
+    const cookieHeader =
+      socket.handshake.headers.cookie || "";
+
+    const cookies = parseCookies(cookieHeader);
 
     const token = cookies[AUTH_COOKIE_NAME];
 
+    console.info("[Socket.IO] Authentication handshake", {
+      origin: socket.handshake.headers.origin,
+      host: socket.handshake.headers.host,
+      expectedCookieName: AUTH_COOKIE_NAME,
+      receivedCookieNames: Object.keys(cookies),
+      authenticationCookiePresent: Boolean(token),
+      transport: socket.conn.transport.name,
+    });
+
     if (!token) {
+      console.error(
+        "[Socket.IO] Rejected: authentication cookie missing."
+      );
+
       return next(new Error("Authentication required."));
     }
 

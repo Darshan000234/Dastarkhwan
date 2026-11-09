@@ -1,7 +1,6 @@
 import dotenv from 'dotenv';
 
 dotenv.config();
-console.log(process.env.CLIENT_ORIGIN);
 
 export const env = Object.freeze({
   nodeEnv: process.env.NODE_ENV || 'development',
