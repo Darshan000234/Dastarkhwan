@@ -11,7 +11,6 @@ router.get("/overview", admin.getOverview);
 router.get("/audit-log", admin.getAuditLog);
 router.get("/settings", admin.getSettings);
 router.patch("/settings", admin.updateSettings);
-router.post("/demo/reset", admin.resetDemoData);
 
 router.get("/orders", orders.listOrders);
 router.get("/orders/:orderId", orders.getOrder);

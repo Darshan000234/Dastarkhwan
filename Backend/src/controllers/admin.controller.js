@@ -352,7 +352,7 @@ async function writeAudit(
         req.get("user-agent")?.slice(0, 300) || null,
     },
   });
-}6
+}
 
 /* =========================================================
    A. GET OVERVIEW
@@ -1402,62 +1402,5 @@ export const updateSettings = asyncHandler(async (req, res) => {
     transactionResult.unchanged
       ? "Settings are already up to date."
       : "Settings updated successfully.",
-  );
-});
-
-/* =========================================================
-   E. RESET DEMO DATA
-
-   POST /api/v1/admin/demo/reset
-
-   SAFETY DECISION:
-
-   Current Prisma schema does not identify demo-owned
-   records, and existing seed logic is not a reset service.
-
-   Do not delete tables or records using hardcoded IDs.
-
-   Fail closed until a dedicated demo isolation mechanism
-   exists.
-========================================================= */
-
-export const resetDemoData = asyncHandler(async (req, res) => {
-  // -----------------------------------------------------
-  // 1. Production must always be rejected.
-  // -----------------------------------------------------
-
-  if (process.env.NODE_ENV === "production") {
-    throw new HttpError(
-      "Demo data reset is disabled in production.",
-      403,
-      "DEMO_RESET_FORBIDDEN",
-    );
-  }
-
-  // -----------------------------------------------------
-  // 2. Reset must be explicitly enabled.
-  //
-  // This does not mean reset is currently safe.
-  // It is an additional protection only.
-  // -----------------------------------------------------
-
-  if (process.env.DEMO_RESET_ENABLED !== "true") {
-    throw new HttpError(
-      "Demo data reset is disabled. Set DEMO_RESET_ENABLED=true only after configuring safe demo-data isolation.",
-      503,
-      "DEMO_RESET_DISABLED",
-    );
-  }
-
-  // -----------------------------------------------------
-  // 3. Require a reliable demo marker.
-  //
-  // No such marker currently exists in the repository.
-  // -----------------------------------------------------
-
-  throw new HttpError(
-    "Demo reset cannot run safely because the database does not distinguish demo records from real records. Add explicit demo-data ownership before enabling this operation.",
-    503,
-    "DEMO_DATA_ISOLATION_MISSING",
   );
 });
